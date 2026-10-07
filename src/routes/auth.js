@@ -17,24 +17,34 @@ router.post("/register", async (req, res) => {
             });
         }
 
-        // ================================
-// KIỂM TRA EMAIL + SỐ ĐIỆN THOẠI
-// ================================
+      const checkUser = await pool.query(
+    `
+    SELECT
+        EXISTS (
+            SELECT 1
+            FROM users
+            WHERE email = $1
+        ) AS email_exists,
 
-const existingEmail = await pool.query(
-    "SELECT id FROM users WHERE email = $1",
-    [email]
+        EXISTS (
+            SELECT 1
+            FROM users
+            WHERE phone = $2
+        ) AS phone_exists
+    `,
+    [email, phone]
 );
 
-const existingPhone = await pool.query(
-    "SELECT id FROM users WHERE phone = $1",
-    [phone]
-);
+const emailExists = checkUser.rows[0].email_exists;
+const phoneExists = checkUser.rows[0].phone_exists;
 
-const emailExists = existingEmail.rows.length > 0;
-const phoneExists = existingPhone.rows.length > 0;
+console.log("CHECK REGISTER:", {
+    email,
+    phone,
+    emailExists,
+    phoneExists
+});
 
-// Cả email và số điện thoại đều trùng
 if (emailExists && phoneExists) {
     return res.status(409).json({
         success: false,
@@ -42,7 +52,6 @@ if (emailExists && phoneExists) {
     });
 }
 
-// Chỉ email trùng
 if (emailExists) {
     return res.status(409).json({
         success: false,
@@ -50,7 +59,6 @@ if (emailExists) {
     });
 }
 
-// Chỉ số điện thoại trùng
 if (phoneExists) {
     return res.status(409).json({
         success: false,
