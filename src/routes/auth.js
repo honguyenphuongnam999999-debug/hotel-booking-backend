@@ -1,6 +1,25 @@
-const express=require("express");const bcrypt=require("bcryptjs");const jwt=require("jsonwebtoken");const {randomUUID}=require("crypto");const pool=require("../config/db");const {requireAuth}=require("../middleware/auth");const router=express.Router();
-router.post("/register",async(req,res)=>{const {email,password,full_name,phone}=req.body;if(!email||typeof email!=="string"||!password||typeof password!=="string")return res.status(400).json({success:false,message:"Email and password are required"});if(password.length<6)return res.status(400).json({success:false,message:"Password must contain at least 6 characters"});if(!process.env.JWT_SECRET)return res.status(500).json({success:false,message:"JWT_SECRET is not configured"});try{const hash=await bcrypt.hash(password,12);const {rows}=await pool.query("INSERT INTO users(id,email,password_hash,full_name,phone) VALUES($1,$2,$3,$4,$5) RETURNING id,email,full_name,phone,avatar,created_at",[randomUUID(),email.trim().toLowerCase(),hash,full_name||null,phone||null]);res.status(201).json({success:true,data:rows[0]});}catch(e){if(e.code==="23505")return res.status(409).json({success:false,message:"Email already exists"});console.error(e);res.status(500).json({success:false,message:"Unable to register"});}});
-router.post("/login",async(req,res)=>{const {email,password}=req.body;if(!email||!password)return res.status(400).json({success:false,message:"Email and password are required"});if(!process.env.JWT_SECRET)return res.status(500).json({success:false,message:"JWT_SECRET is not configured"});try{const {rows}=await pool.query("SELECT id,email,password_hash,full_name,phone,avatar,created_at FROM users WHERE email=$1",[String(email).trim().toLowerCase()]);if(!rows.length||!(await bcrypt.compare(password,rows[0].password_hash)))return res.status(401).json({success:false,message:"Email or password is incorrect"});const user=rows[0];delete user.password_hash;const token=jwt.sign({id:user.id,email:user.email},process.env.JWT_SECRET,{expiresIn:"7d"});res.json({success:true,token,data:user});}catch(e){console.error(e);res.status(500).json({success:false,message:"Unable to login"});}});
-router.post("/logout",requireAuth,(req,res)=>res.json({success:true,message:"Logged out"}));
-router.get("/me",requireAuth,async(req,res)=>{try{const {rows}=await pool.query("SELECT id,email,full_name,phone,avatar,created_at FROM users WHERE id=$1",[req.user.id]);if(!rows.length)return res.status(404).json({success:false,message:"User not found"});res.json({success:true,data:rows[0]});}catch(e){console.error(e);res.status(500).json({success:false,message:"Unable to get user"});}});
-module.exports=router;
+// Kiểm tra email
+const existingEmail = await pool.query(
+    "SELECT id FROM users WHERE email = $1",
+    [email]
+);
+
+if (existingEmail.rows.length > 0) {
+    return res.status(409).json({
+        success: false,
+        message: "Email đã được sử dụng"
+    });
+}
+
+// Kiểm tra số điện thoại
+const existingPhone = await pool.query(
+    "SELECT id FROM users WHERE phone = $1",
+    [phone]
+);
+
+if (existingPhone.rows.length > 0) {
+    return res.status(409).json({
+        success: false,
+        message: "Số điện thoại đã được sử dụng"
+    });
+}
