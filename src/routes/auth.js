@@ -18,34 +18,45 @@ router.post("/register", async (req, res) => {
         }
 
         // ================================
-        // KIỂM TRA EMAIL
-        // ================================
-        const existingEmail = await pool.query(
-            "SELECT id FROM users WHERE email = $1",
-            [email]
-        );
+// KIỂM TRA EMAIL + SỐ ĐIỆN THOẠI
+// ================================
 
-        if (existingEmail.rows.length > 0) {
-            return res.status(409).json({
-                success: false,
-                message: "Email đã được sử dụng"
-            });
-        }
+const existingEmail = await pool.query(
+    "SELECT id FROM users WHERE email = $1",
+    [email]
+);
 
-        // ================================
-        // KIỂM TRA SỐ ĐIỆN THOẠI
-        // ================================
-        const existingPhone = await pool.query(
-            "SELECT id FROM users WHERE phone = $1",
-            [phone]
-        );
+const existingPhone = await pool.query(
+    "SELECT id FROM users WHERE phone = $1",
+    [phone]
+);
 
-        if (existingPhone.rows.length > 0) {
-            return res.status(409).json({
-                success: false,
-                message: "Số điện thoại đã được sử dụng"
-            });
-        }
+const emailExists = existingEmail.rows.length > 0;
+const phoneExists = existingPhone.rows.length > 0;
+
+// Cả email và số điện thoại đều trùng
+if (emailExists && phoneExists) {
+    return res.status(409).json({
+        success: false,
+        message: "Email và số điện thoại đã được sử dụng"
+    });
+}
+
+// Chỉ email trùng
+if (emailExists) {
+    return res.status(409).json({
+        success: false,
+        message: "Email đã được sử dụng"
+    });
+}
+
+// Chỉ số điện thoại trùng
+if (phoneExists) {
+    return res.status(409).json({
+        success: false,
+        message: "Số điện thoại đã được sử dụng"
+    });
+}
 
         // ================================
         // TẠO USER
