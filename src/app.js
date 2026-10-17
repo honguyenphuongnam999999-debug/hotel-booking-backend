@@ -22,6 +22,7 @@ app.use("/api/rooms", require("./routes/rooms"));
 app.use("/api/bookings", require("./routes/bookings"));
 app.use("/api/guests", require("./routes/guests"));
 app.use("/api/payments", require("./routes/payments"));
+app.use("/api/notifications", require("./routes/notifications"));
 app.use("/api/vouchers", require("./routes/vouchers"));
 app.use("/api/favorites", require("./routes/favorites"));
 app.use("/api/reviews", require("./routes/reviews"));

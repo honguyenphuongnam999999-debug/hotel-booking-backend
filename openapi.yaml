@@ -1,0 +1,1614 @@
+openapi: 3.0.3
+info:
+  title: Hotel Booking API
+  version: 1.0.0
+  description: OpenAPI description generated from the Express routes mounted in src/app.js.
+servers:
+  - url: https://hotel-booking-backend-fz9h.onrender.com
+    description: Local development server
+tags:
+  - name: Auth
+  - name: Users
+  - name: Hotels
+  - name: Rooms
+  - name: Room Types
+  - name: Bookings
+  - name: Guests
+  - name: Payments
+  - name: Vouchers
+  - name: Favorites
+  - name: Reviews
+paths:
+  /:
+    get:
+      tags: [Auth]
+      summary: API health message
+      responses:
+        '200':
+          description: API is running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RootResponse'
+  /api/test-db:
+    get:
+      tags: [Auth]
+      summary: Check PostgreSQL connection
+      responses:
+        '200':
+          description: Database connection succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and receive a JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout the authenticated client
+      description: JWT is stateless; the response instructs the client to discard its token and does not revoke it server-side.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logout response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/users/me:
+    get:
+      tags: [Users]
+      summary: Get the authenticated user's profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    put:
+      tags: [Users]
+      summary: Update editable profile fields
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/hotels:
+    get:
+      tags: [Hotels]
+      summary: List hotels
+      responses:
+        '200':
+          description: Hotel list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HotelListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/hotels/{id}:
+    get:
+      tags: [Hotels]
+      summary: Get a hotel
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Hotel details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HotelResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/hotels/{id}/images:
+    get:
+      tags: [Hotels]
+      summary: List hotel images
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Images ordered by ordering
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HotelImageListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/hotels/{id}/amenities:
+    get:
+      tags: [Hotels]
+      summary: List hotel amenities
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Amenities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AmenityListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/hotels/{id}/vibes:
+    get:
+      tags: [Hotels]
+      summary: List hotel vibe tags
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Vibe tags
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VibeListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/hotels/{id}/room-types:
+    get:
+      tags: [Hotels]
+      summary: List room types at a hotel
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Room types
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomTypeListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/hotels/{id}/reviews:
+    get:
+      tags: [Reviews]
+      summary: List reviews for a hotel
+      description: Authorization is optional. If a bearer token is supplied, it must be valid.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Hotel reviews with reviewer name and avatar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags: [Reviews]
+      summary: Create a review for a hotel
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HotelReviewRequest'
+      responses:
+        '201':
+          description: Review created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/room-types/{id}:
+    get:
+      tags: [Room Types]
+      summary: Get a room type
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Room type details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomTypeResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/room-types/{id}/images:
+    get:
+      tags: [Room Types]
+      summary: List images for a room type
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Room type images
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomTypeImageListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/room-types/{id}/rooms:
+    get:
+      tags: [Room Types]
+      summary: List rooms assigned to a room type
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Rooms
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/rooms:
+    get:
+      tags: [Rooms]
+      summary: List rooms with optional filters
+      parameters:
+        - name: hotel_id
+          in: query
+          schema: { type: string }
+        - name: room_type_id
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string, enum: [active, maintenance, inactive] }
+      responses:
+        '200':
+          description: Rooms matching all supplied filters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/rooms/available:
+    get:
+      tags: [Rooms]
+      summary: Find active rooms available for a date range
+      parameters:
+        - name: hotel_id
+          in: query
+          required: true
+          schema: { type: string }
+        - name: room_type_id
+          in: query
+          required: false
+          schema: { type: string }
+        - name: check_in
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: check_out
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Available rooms
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailableRoomListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/rooms/{id}:
+    get:
+      tags: [Rooms]
+      summary: Get a room
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Room details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/bookings:
+    post:
+      tags: [Bookings]
+      summary: Create a booking and reserve rooms
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: Booking and booking room rows created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    get:
+      tags: [Bookings]
+      summary: List the authenticated user's bookings
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User bookings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingHistoryListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/bookings/{id}:
+    get:
+      tags: [Bookings]
+      summary: Get an owned booking and its rooms
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Booking details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/bookings/{id}/guests:
+    get:
+      tags: [Guests]
+      summary: List guests on an owned booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Booking guests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags: [Guests]
+      summary: Add a guest to an owned booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGuestRequest'
+      responses:
+        '201':
+          description: Guest added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/bookings/{id}/payments:
+    get:
+      tags: [Payments]
+      summary: List payments for an owned booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Booking payments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/bookings/{id}/qr:
+    get:
+      tags: [Bookings]
+      summary: Get the QR token for an owned booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: QR data for the client to encode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingQrResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/bookings/{id}/cancel:
+    patch:
+      tags: [Bookings]
+      summary: Cancel an eligible owned booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Booking cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/bookings/{id}/check-in:
+    post:
+      tags: [Bookings]
+      summary: Check in an eligible owned booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Booking checked in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/guests/{id}:
+    put:
+      tags: [Guests]
+      summary: Update a guest on an owned booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGuestRequest'
+      responses:
+        '200':
+          description: Updated guest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags: [Guests]
+      summary: Delete a guest on an owned booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Guest deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/payments:
+    post:
+      tags: [Payments]
+      summary: Initiate a payment for an owned booking
+      description: Creates a pending payment. This endpoint does not confirm payment success.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+      responses:
+        '201':
+          description: Pending payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentCreatedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/payments/{id}:
+    get:
+      tags: [Payments]
+      summary: Get a payment on an owned booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Payment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/payments/{id}/qr:
+    get:
+      tags: [Payments]
+      summary: Get mock QR text for an owned QR payment
+      description: Returns text for the client to encode. It does not represent a bank transfer or confirm payment.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Mock QR content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentQrResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/payments/{id}/simulate:
+    post:
+      tags: [Payments]
+      summary: Simulate a payment result when PAYMENT_MODE=mock
+      description: Demo-only. A successful result marks the payment paid, confirms the booking, and creates an in-app notification in one database transaction.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SimulatePaymentRequest'
+      responses:
+        '200':
+          description: Simulated result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Mock simulation is disabled
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/notifications:
+    get:
+      tags: [Payments]
+      summary: List in-app notifications for the authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User notifications
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/vouchers:
+    get:
+      tags: [Vouchers]
+      summary: List currently active vouchers
+      responses:
+        '200':
+          description: Active vouchers in their validity period
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoucherListResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/vouchers/validate:
+    post:
+      tags: [Vouchers]
+      summary: Validate a voucher against a subtotal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateVoucherRequest'
+      responses:
+        '200':
+          description: Voucher validation and computed discount
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoucherValidationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/vouchers/{code}:
+    get:
+      tags: [Vouchers]
+      summary: Get a voucher by code
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Voucher record (including inactive vouchers)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoucherResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/favorites:
+    get:
+      tags: [Favorites]
+      summary: List the authenticated user's favorite hotels
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Favorite hotel list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HotelListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/favorites/{hotel_id}:
+    post:
+      tags: [Favorites]
+      summary: Add a hotel to favorites
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: hotel_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '201':
+          description: Favorite added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags: [Favorites]
+      summary: Remove a hotel from favorites
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: hotel_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Favorite removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/reviews:
+    post:
+      tags: [Reviews]
+      summary: Create a review using a hotel ID in the request body
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewRequest'
+      responses:
+        '201':
+          description: Review created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/reviews/{id}:
+    put:
+      tags: [Reviews]
+      summary: Update an owned review
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReviewRequest'
+      responses:
+        '200':
+          description: Updated review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags: [Reviews]
+      summary: Delete an owned review
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Review deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing, invalid, or expired bearer token, or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: The authenticated user is not eligible for this operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Requested resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Request conflicts with existing resource state
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServerError:
+      description: Server or database error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [success, message]
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string }
+    RootResponse:
+      type: object
+      required: [success, message]
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Hotel Booking API is running }
+    MessageResponse:
+      type: object
+      required: [success, message]
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string }
+    DatabaseResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          properties:
+            current_time: { type: string, format: date-time }
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 6 }
+        full_name: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    UpdateUserRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        full_name: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        avatar: { type: string, nullable: true }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        full_name: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        avatar: { type: string, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+    UserResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: '#/components/schemas/User' }
+    LoginResponse:
+      type: object
+      required: [success, token, data]
+      properties:
+        success: { type: boolean, example: true }
+        token: { type: string, description: JWT valid for seven days }
+        data: { $ref: '#/components/schemas/User' }
+    Hotel:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        latitude: { type: number, nullable: true }
+        longitude: { type: number, nullable: true }
+        star_rating: { type: number, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+    HotelResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: '#/components/schemas/Hotel' }
+    HotelListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Hotel' }
+    HotelImage:
+      type: object
+      properties:
+        id: { type: string }
+        hotel_id: { type: string }
+        image_url: { type: string }
+        ordering: { type: integer, nullable: true }
+    HotelImageListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/HotelImage' }
+    Amenity:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+    AmenityListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Amenity' }
+    Vibe:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+    VibeListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Vibe' }
+    RoomType:
+      type: object
+      properties:
+        id: { type: string }
+        hotel_id: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        max_guests: { type: integer }
+        base_price: { type: number }
+    RoomTypeResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: '#/components/schemas/RoomType' }
+    RoomTypeListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/RoomType' }
+    RoomTypeImage:
+      type: object
+      properties:
+        id: { type: string }
+        room_type_id: { type: string }
+        image_url: { type: string }
+        ordering: { type: integer, nullable: true }
+    RoomTypeImageListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/RoomTypeImage' }
+    Room:
+      type: object
+      properties:
+        id: { type: string }
+        hotel_id: { type: string }
+        room_type_id: { type: string }
+        room_number: { type: string }
+        status: { type: string, enum: [active, maintenance, inactive] }
+    AvailableRoom:
+      allOf:
+        - $ref: '#/components/schemas/Room'
+        - type: object
+          properties:
+            room_type_name: { type: string }
+            max_guests: { type: integer }
+            base_price: { type: number }
+    RoomResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: '#/components/schemas/Room' }
+    RoomListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Room' }
+    AvailableRoomListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AvailableRoom' }
+    CreateBookingRequest:
+      type: object
+      required: [hotel_id, room_ids, check_in, check_out, adults]
+      properties:
+        hotel_id: { type: string }
+        room_ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+        check_in: { type: string, format: date }
+        check_out: { type: string, format: date }
+        adults: { type: integer, minimum: 1 }
+        children: { type: integer, minimum: 0, default: 0 }
+        voucher_code: { type: string, nullable: true }
+    BookingRoom:
+      type: object
+      properties:
+        room_id: { type: string }
+        price_per_night: { type: number }
+        number_of_nights: { type: integer }
+        subtotal: { type: number }
+        room_number: { type: string }
+        room_type_id: { type: string }
+    Booking:
+      type: object
+      properties:
+        id: { type: string }
+        booking_code: { type: string }
+        user_id: { type: string, format: uuid }
+        hotel_id: { type: string }
+        voucher_id: { type: string, nullable: true }
+        check_in: { type: string, format: date }
+        check_out: { type: string, format: date }
+        number_of_guests: { type: integer }
+        subtotal: { type: number }
+        tax: { type: number }
+        discount: { type: number }
+        total_amount: { type: number }
+        status: { type: string, enum: [pending, confirmed, cancelled, completed, checked_in, no_show] }
+        qr_token: { type: string, nullable: true }
+        checked_in_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+        rooms:
+          type: array
+          items: { $ref: '#/components/schemas/BookingRoom' }
+    BookingResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: '#/components/schemas/Booking' }
+    BookingListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Booking' }
+    BookingHistoryItem:
+      type: object
+      properties:
+        id: { type: string }
+        booking_code: { type: string }
+        hotel_id: { type: string }
+        hotel_name: { type: string }
+        check_in: { type: string, format: date }
+        check_out: { type: string, format: date }
+        number_of_guests: { type: integer }
+        subtotal: { type: number }
+        tax: { type: number }
+        discount: { type: number }
+        total_amount: { type: number }
+        status: { type: string, enum: [pending, confirmed, cancelled, completed, checked_in, no_show] }
+        payment_status: { type: string, enum: [pending, paid, failed, refunded], nullable: true }
+        payment_method: { type: string, enum: [card, qr], nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+        rooms:
+          type: array
+          items:
+            type: object
+            properties:
+              room_id: { type: string }
+              room_number: { type: string }
+              room_type: { type: string }
+              price_per_night: { type: number }
+              number_of_nights: { type: integer }
+              subtotal: { type: number }
+    BookingHistoryListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/BookingHistoryItem' }
+    BookingQrResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          properties:
+            booking_id: { type: string }
+            booking_code: { type: string }
+            status: { type: string }
+            qr_token: { type: string }
+    BookingStatusResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          properties:
+            id: { type: string }
+            status: { type: string, enum: [cancelled] }
+    CheckInResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          properties:
+            id: { type: string }
+            status: { type: string, enum: [checked_in] }
+            checked_in_at: { type: string, format: date-time }
+    CreateGuestRequest:
+      type: object
+      required: [full_name]
+      properties:
+        full_name: { type: string }
+        phone: { type: string, nullable: true }
+        email: { type: string, format: email, nullable: true }
+        identification_info: { type: string, nullable: true }
+    UpdateGuestRequest:
+      type: object
+      properties:
+        full_name: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        identification_info: { type: string, nullable: true }
+    Guest:
+      type: object
+      properties:
+        id: { type: string }
+        booking_id: { type: string }
+        full_name: { type: string }
+        phone: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        identification_info: { type: string, nullable: true }
+    GuestResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, nullable: true }
+        data: { $ref: '#/components/schemas/Guest' }
+    GuestListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Guest' }
+    CreatePaymentRequest:
+      type: object
+      required: [booking_id, payment_method]
+      properties:
+        booking_id: { type: string }
+        payment_method: { type: string, enum: [card, qr] }
+    Payment:
+      type: object
+      properties:
+        id: { type: string }
+        booking_id: { type: string }
+        payment_method: { type: string, enum: [card, qr] }
+        transaction_id: { type: string }
+        amount: { type: number }
+        status: { type: string, enum: [pending, paid, failed, refunded] }
+        paid_at: { type: string, format: date-time, nullable: true }
+    PaymentResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: '#/components/schemas/Payment' }
+    PaymentListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Payment' }
+    PaymentCreatedResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: '#/components/schemas/Payment' }
+        message: { type: string, nullable: true }
+    PaymentQrResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          required: [payment_id, booking_id, booking_code, amount, payment_status, qr_content]
+          properties:
+            payment_id: { type: string }
+            booking_id: { type: string }
+            booking_code: { type: string }
+            amount: { type: number }
+            payment_status: { type: string, enum: [pending, paid, failed, refunded] }
+            qr_content: { type: string, example: 'THANH TOAN BOOKING BKG123' }
+    SimulatePaymentRequest:
+      type: object
+      required: [result]
+      properties:
+        result: { type: string, enum: [success, failed] }
+    Notification:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string, format: uuid }
+        booking_id: { type: string, nullable: true }
+        title: { type: string }
+        content: { type: string }
+        type: { type: string }
+        created_at: { type: string, format: date-time }
+        is_read: { type: boolean }
+    NotificationListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Notification' }
+    Voucher:
+      type: object
+      properties:
+        id: { type: string }
+        code: { type: string }
+        discount_type: { type: string, enum: [percent, fixed] }
+        discount_value: { type: number }
+        min_order: { type: number }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        status: { type: string, enum: [active, inactive] }
+    VoucherResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: '#/components/schemas/Voucher' }
+    VoucherListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Voucher' }
+    ValidateVoucherRequest:
+      type: object
+      required: [code, subtotal]
+      properties:
+        code: { type: string }
+        subtotal: { type: number, minimum: 0 }
+    VoucherValidationResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          required: [voucher, discount_amount, total_amount]
+          properties:
+            voucher: { $ref: '#/components/schemas/Voucher' }
+            discount_amount: { type: number }
+            total_amount: { type: number }
+    FavoriteResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          properties:
+            user_id: { type: string, format: uuid }
+            hotel_id: { type: string }
+    HotelReviewRequest:
+      type: object
+      required: [booking_id, rating]
+      properties:
+        booking_id: { type: string }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, nullable: true }
+    CreateReviewRequest:
+      allOf:
+        - $ref: '#/components/schemas/HotelReviewRequest'
+        - type: object
+          required: [hotel_id]
+          properties:
+            hotel_id: { type: string }
+    UpdateReviewRequest:
+      type: object
+      minProperties: 1
+      properties:
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, nullable: true }
+    Review:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string, format: uuid }
+        hotel_id: { type: string }
+        booking_id: { type: string }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+        full_name: { type: string, nullable: true }
+        avatar: { type: string, nullable: true }
+    ReviewResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: '#/components/schemas/Review' }
+    ReviewListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Review' }
