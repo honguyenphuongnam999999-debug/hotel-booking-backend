@@ -122,7 +122,7 @@ router.post("/:id/simulate", async (req, res) => {
 
     const newStatus = result === "success" ? "paid" : "failed";
     const updated = await client.query(
-      "UPDATE payments SET status=$2,paid_at=CASE WHEN $2='paid' THEN NOW() ELSE NULL END WHERE id=$1 AND status='pending' RETURNING id,booking_id,payment_method,transaction_id,amount,status,paid_at",
+      "UPDATE payments SET status=$2::varchar,paid_at=CASE WHEN $2::varchar='paid' THEN NOW() ELSE NULL END WHERE id=$1 AND status='pending' RETURNING id,booking_id,payment_method,transaction_id,amount,status,paid_at",
       [payment.id, newStatus]
     );
     if (result === "success") {
