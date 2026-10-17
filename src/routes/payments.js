@@ -132,7 +132,7 @@ router.post("/:id/simulate", async (req, res) => {
     (id, user_id, booking_id, title, message, type, created_at)
    VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
   [
-    `NTF${randomUUID().replace(/-/g, "").slice(0, 17)}`,
+    randomUUID(),
     payment.user_id,
     payment.booking_id,
     "Thanh toán thành công",
