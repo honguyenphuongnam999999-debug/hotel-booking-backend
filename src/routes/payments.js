@@ -128,9 +128,18 @@ router.post("/:id/simulate", async (req, res) => {
     if (result === "success") {
       await client.query("UPDATE bookings SET status='confirmed' WHERE id=$1 AND status='pending'", [payment.booking_id]);
       await client.query(
-        "INSERT INTO notifications(id,user_id,booking_id,title,content,type,created_at) VALUES($1,$2,$3,$4,$5,$6,NOW())",
-        [`NTF${randomUUID().replace(/-/g, "").slice(0, 17)}`, payment.user_id, payment.booking_id, "Thanh toán thành công", `Thanh toán booking ${payment.booking_code} đã được xác nhận.`, "payment"]
-      );
+  `INSERT INTO notifications
+    (id, user_id, booking_id, title, message, type, created_at)
+   VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+  [
+    `NTF${randomUUID().replace(/-/g, "").slice(0, 17)}`,
+    payment.user_id,
+    payment.booking_id,
+    "Thanh toán thành công",
+    `Booking ${payment.booking_code} đã được xác nhận thanh toán.`,
+    "payment"
+  ]
+);
     }
     await client.query("COMMIT");
     return res.json({ success: true, data: updated.rows[0] });
