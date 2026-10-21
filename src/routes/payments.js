@@ -2,6 +2,7 @@ const express = require("express");
 const { randomUUID } = require("crypto");
 const pool = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
+const { sendPaymentSuccessEmail } = require("../services/paymentEmailService");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -95,8 +96,8 @@ router.post("/:id/simulate", async (req, res) => {
     await client.query("BEGIN");
     const { rows } = await client.query(
       `SELECT p.id,p.booking_id,p.payment_method,p.transaction_id,p.amount,p.status,p.paid_at,
-              b.status AS booking_status,b.booking_code,b.user_id
-       FROM payments p JOIN bookings b ON b.id=p.booking_id
+              b.status AS booking_status,b.booking_code,b.user_id,b.booking_email,b.check_in,b.check_out,h.name AS hotel_name
+       FROM payments p JOIN bookings b ON b.id=p.booking_id JOIN hotels h ON h.id=b.hotel_id
        WHERE p.id=$1 AND b.user_id=$2 FOR UPDATE OF b,p`,
       [req.params.id, req.user.id]
     );
@@ -129,7 +130,7 @@ router.post("/:id/simulate", async (req, res) => {
       await client.query("UPDATE bookings SET status='confirmed' WHERE id=$1 AND status='pending'", [payment.booking_id]);
       await client.query(
   `INSERT INTO notifications
-    (id, user_id, booking_id, title, message, type, created_at)
+    (id, user_id, booking_id, title, content, type, created_at)
    VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
   [
     randomUUID(),
@@ -142,7 +143,28 @@ router.post("/:id/simulate", async (req, res) => {
 );
     }
     await client.query("COMMIT");
-    return res.json({ success: true, data: updated.rows[0] });
+    let emailStatus = result === "success" ? "not_sent" : "not_applicable";
+    let emailMessage = result === "success" ? "Payment is confirmed; booking email is not set" : "No email sent because payment was not successful";
+    if (result === "success" && payment.booking_email) {
+      try {
+        await sendPaymentSuccessEmail({
+          to: payment.booking_email,
+          bookingCode: payment.booking_code,
+          paymentId: payment.id,
+          amount: payment.amount,
+          hotelName: payment.hotel_name,
+          checkIn: payment.check_in,
+          checkOut: payment.check_out,
+        });
+        emailStatus = "sent";
+        emailMessage = "Confirmation email sent";
+      } catch (emailError) {
+        emailStatus = "failed";
+        emailMessage = "Payment is confirmed, but confirmation email could not be sent";
+        console.error("Payment confirmation email failed:", emailError.code || "SMTP_ERROR");
+      }
+    }
+    return res.json({ success: true, data: updated.rows[0], email: { status: emailStatus, message: emailMessage } });
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("Unable to simulate payment:", error);
