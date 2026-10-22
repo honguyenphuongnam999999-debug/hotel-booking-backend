@@ -14,7 +14,7 @@ function createTransporter() {
 }
 
 async function sendPaymentSuccessEmail({ to, bookingCode, paymentId, amount, hotelName, checkIn, checkOut }) {
-  if (!to) throw new Error("Booking email is missing");
+  if (typeof to !== "string" || !to.trim()) throw new Error("Booking email is missing");
   if (!process.env.SMTP_USER || !process.env.SMTP_APP_PASSWORD) {
     throw new Error("SMTP credentials are not configured");
   }
@@ -23,7 +23,7 @@ async function sendPaymentSuccessEmail({ to, bookingCode, paymentId, amount, hot
   const transporter = createTransporter();
   const info = await transporter.sendMail({
     from: `"Hotel Booking" <${process.env.SMTP_USER}>`,
-    to,
+    to: to.trim(),
     subject: `Xác nhận thanh toán đặt phòng - ${bookingCode}`,
     text: [
       "Xin chào,",
@@ -37,6 +37,14 @@ async function sendPaymentSuccessEmail({ to, bookingCode, paymentId, amount, hot
       "Cảm ơn bạn đã sử dụng dịch vụ đặt phòng của chúng tôi.",
     ].join("\n\n"),
   });
+
+  const accepted = Array.isArray(info.accepted) ? info.accepted : [];
+  const recipient = to.trim().toLowerCase();
+  if (!accepted.some((address) => String(address).trim().toLowerCase() === recipient)) {
+    const error = new Error("SMTP did not accept the booking email recipient");
+    error.code = "SMTP_RECIPIENT_REJECTED";
+    throw error;
+  }
 
   return { messageId: info.messageId, accepted: info.accepted, rejected: info.rejected };
 }

@@ -1,85 +1,57 @@
-# Hướng dẫn AI tích hợp Hotel Booking API vào Flutter
+﻿# Flutter Integration Guide — Hotel Booking API
 
-API contract: [HOTEL_BOOKING_API_DOCUMENT.md](HOTEL_BOOKING_API_DOCUMENT.md). Source verification không đồng nghĩa API production đã được kiểm tra. Hãy giữ nguyên nhãn trạng thái trong tài liệu API.
+Tài liệu này mô tả contract theo router được mount ở `src/app.js`, handler hiện có, JWT middleware và email service. Không phải xác nhận production đang hoạt động. Base URL production do dự án cung cấp là `https://hotel-booking-backend-fz9h.onrender.com`; cần kiểm tra cấu hình môi trường trước khi dùng.
 
-## 1. Khảo sát project trước khi sửa
+## Quy tắc tích hợp
 
-1. Đọc `pubspec.yaml`, Dart/Flutter SDK, dependencies và code generation.
-2. Khảo sát `lib/`, tests, integration tests, router/navigation, state management, dependency injection, UI conventions và error handling.
-3. Tìm API clients, Dio/http wrappers, interceptors, services, repositories, models/DTOs, secure storage.
-4. Tìm mock data/fixtures và màn hình đang dùng; lập mapping màn hình/use case -> mock -> endpoint -> auth -> trạng thái xác minh.
-5. Tái sử dụng cấu trúc/package/UI/navigation/state management hiện tại; không tạo kiến trúc/client trùng.
-6. Ghi nhận baseline lỗi trước khi sửa để phân biệt lỗi mới.
+- JSON request dùng `Content-Type: application/json`; Express JSON limit 1 MB.
+- JWT gửi `Authorization: Bearer <token>` cho route bảo vệ. Token chứa `id`, hết hạn sau 7 ngày. Logout chỉ trả lời client xóa token; không thu hồi token ở server.
+- `optionalAuth` cho phép gọi không token; nếu gửi token hỏng thì nhận 401.
+- Giữ ID user ở dạng UUID và các ID hotel/room/booking/payment dưới dạng chuỗi. Giá PostgreSQL `numeric` có thể về JSON dưới dạng chuỗi; ngày dùng `YYYY-MM-DD`.
+- Không có API posts, search users, profile người khác, upload ảnh, refresh token, FCM, hotel search hay pagination trong source hiện tại.
 
-## 2. Contract và Base URL
+## Endpoint theo nhóm
 
-- Production Base URL: `https://hotel-booking-backend-fz9h.onrender.com`.
-- Đọc catalog, từng schema và OpenAPI discrepancy trong API document trước khi tích hợp.
-- Chỉ dùng method/path/query/body/response có bằng chứng. Source tồn tại nhưng production chưa test; kiểm tra runtime có kiểm soát nếu được phép.
-- Register thực tế yêu cầu email/password/full_name/phone; password >= 8 ký tự. OpenAPI cũ khác implementation.
-- `GET /api/hotels` không hỗ trợ search/filter/pagination; không gửi query giả.
-- Payment creation chỉ trả `pending`; không tuyên bố payment hoàn tất.
-- Nếu payload thực tế khác source/document, dừng phần phụ thuộc, ghi lại khác biệt sau khi xóa token/PII và không đoán contract.
+| Nhóm | API thực tế và auth |
+|---|---|
+| Health | `GET /`, `GET /api/test-db` (public) |
+| Auth | `POST /api/auth/register`, `POST /api/auth/login` (public); `POST /api/auth/logout`, `GET /api/auth/me` (JWT) |
+| Profile | `GET /api/users/me`, `PUT /api/users/me` (JWT; PUT chỉ `full_name`, `phone`, `avatar`) |
+| Hotels | `GET /api/hotels`, `GET /api/hotels/{id}`, `/images`, `/amenities`, `/vibes`, `/room-types` (public); `GET /api/hotels/{id}/reviews` optional JWT; `POST /api/hotels/{id}/reviews` JWT |
+| Room types | `GET /api/room-types/{id}`, `/{id}/images`, `/{id}/rooms` (public) |
+| Rooms | `GET /api/rooms`, `GET /api/rooms/{id}`, `GET /api/rooms/available` (public) |
+| Bookings | `POST /api/bookings`, `GET /api/bookings`, `GET /api/bookings/{id}`, `PATCH /api/bookings/{id}/cancel`, `POST /api/bookings/{id}/check-in`, `GET /api/bookings/{id}/qr`, `GET/POST /api/bookings/{id}/guests`, `GET /api/bookings/{id}/payments` (JWT) |
+| Guests | `PUT /api/guests/{id}`, `DELETE /api/guests/{id}` (JWT) |
+| Payments | `POST /api/payments`, `GET /api/payments/{id}`, `GET /api/payments/{id}/qr`, `POST /api/payments/{id}/simulate` (JWT; simulate ayrıca `PAYMENT_MODE=mock`) |
+| Notifications | `GET /api/notifications` (JWT) |
+| Vouchers | `GET /api/vouchers`, `GET /api/vouchers/{code}`, `POST /api/vouchers/validate` (public) |
+| Favorites | `GET /api/favorites`, `POST /api/favorites/{hotel_id}`, `DELETE /api/favorites/{hotel_id}` (JWT) |
+| Reviews | `POST /api/reviews`, `PUT /api/reviews/{id}`, `DELETE /api/reviews/{id}` (JWT) |
 
-## 3. Tầng API
+Chi tiết field/response của mọi route nằm trong [API reference](HOTEL_BOOKING_API_DOCUMENT.md). Route catalog phản ánh source; schema có thể làm route trả lỗi runtime.
 
-- Tái sử dụng Dio nếu dự án đã dùng; nếu đang có HTTP client tốt, đánh giá trước khi thay.
-- Tạo/cập nhật client, services, repositories và Dart models theo pattern hiện có; đặt cấu hình Base URL theo môi trường project.
-- Không hardcode secrets; Base URL không phải secret.
-- Gửi JSON Content-Type khi có JSON body; không thêm header/body ngoài contract.
-- Giữ transport/parsing tách khỏi UI theo kiến trúc hiện tại; widget không tự ghép URL tùy tiện.
-- Response thường có `success` và `data`, nhưng register trả `user`; lỗi không có schema/message đồng nhất.
+## Luồng sử dụng
 
-## 4. Models và parsing
+1. **Đăng ký/đăng nhập:** register body gồm `full_name,email,phone,password`; password tối thiểu 8 ký tự. Login nhận `email,password`. JWT có thời hạn 7 ngày.
+2. **Khám phá:** tải danh sách hotel, ảnh catalog, tiện ích, vibes, room types; có thể gọi `GET /api/rooms/available?hotel_id=...&check_in=YYYY-MM-DD&check_out=YYYY-MM-DD&room_type_id=...`. Đây là danh sách phòng vật lý có sẵn tại lúc truy vấn.
+3. **Tạo booking:** `POST /api/bookings` cần `hotel_id,room_ids,check_in,check_out,adults,booking_email`; `children` mặc định 0, `voucher_code` tùy chọn. `room_ids` là ID phòng vật lý. Backend tự tính tiền và kiểm tra overlap lại. Email phải đúng định dạng và domain phải có MX hoặc A record; DNS không xác minh hộp thư. Booking lưu tổng guest count, không lưu tách adults/children; tax hiện bằng 0.
+4. **Thanh toán demo:** `POST /api/payments` nhận `booking_id,payment_method` (`card`/`qr`); không gửi dữ liệu thẻ. Trả 409 nếu booking đã paid hoặc đã có payment pending. QR endpoint chỉ trả text demo, scan QR không xác nhận thanh toán. Simulate chỉ dùng trên môi trường demo khi server bật mock.
+5. **Email thanh toán:** khi `POST /api/payments/{id}/simulate` với `result:"success"` payment và booking được commit lần lượt thành `paid`/`confirmed`; sau commit backend thử ghi notification và gọi SMTP độc lập. Notification lỗi không rollback payment hay ngăn email. Response thêm `email.status`: `sent`, `failed`, hoặc `not_sent`. Lỗi SMTP không đổi trạng thái `paid`. Payment hoàn tất trước đó không gửi email lại. Source hiện không có callback từ cổng thanh toán thật.
+6. **Booking của tôi:** `/api/bookings` chỉ trả booking của JWT user. History có hotel name, room list, totals/status và payment summary; không nhúng guest names hoặc hotel image. Dùng subroutes guest/payment khi cần.
+7. **Check-in:** booking QR/token không phải xác nhận payment. Check-in chỉ thành công với booking confirmed đúng ngày nhận phòng.
 
-- ID là `String` opaque; đừng giả định tất cả UUID.
-- Handle nullable fields đúng contract, không biến null thành chuỗi giả.
-- Parse `num` an toàn cho tiền/decimal; xem xét response numeric dạng string nếu runtime xác nhận.
-- Ngày booking là `YYYY-MM-DD`, không timezone-convert làm lệch ngày.
-- Parse ISO-8601 timestamp bằng `DateTime.parse`; không cộng tay giờ Việt Nam vào UTC đã parse.
-- Status có thể mở rộng; enum nên chịu được giá trị chưa biết.
-- Theo serialization/toolchain đã có (`json_serializable` hoặc khác); chỉ chạy generator nếu project dùng.
+## Trạng thái và lỗi cần xử lý
 
-## 5. Authentication
+- Availability dùng khoảng `[check_in,check_out)`; booking mọi trạng thái trừ `cancelled` chiếm phòng. Pending, kể cả payment failed, không tự hết hạn và vẫn block.
+- Các route thường dùng HTTP `400`, `401`, `403`, `404`, `409`, `500`; tạo booking có thể trả `503` nếu DNS lỗi tạm thời. Error message không có mã chuẩn hóa. Hiển thị lỗi từ server; không đánh dấu thao tác thành công trước response thành công.
+- Review chỉ tạo được cho booking thuộc user, cùng hotel, trạng thái `completed` hoặc `checked_in`; rating 1–5. Review này khác bài viết trải nghiệm.
 
-- Login trả JWT trong `token`, source quy định 7 ngày.
-- Thêm `Authorization: Bearer <token>` cho route yêu cầu auth. Hotel reviews GET cho phép anonymous, nhưng token nếu gửi phải hợp lệ.
-- Dùng secure storage package đã có hoặc phù hợp; không lưu password và không log token/password/header/PII.
-- Logout server không revoke token; client xóa token. Không triển khai refresh token, vì backend không hỗ trợ.
-- Khi 401, xử lý session theo UX hiện có; không tự login/retry vô hạn. Redact Dio/crash logs.
+## Blocker và điều chưa xác minh
 
-## 6. UI, loading và errors
+- Metadata local đã đọc trước đây cho thấy `users.id` UUID không có default, nhưng register source không truyền `id`; login source cập nhật `users.last_login_at` trong khi metadata đó không có cột này. Hai luồng auth chưa được xác nhận chạy với schema local đó.
+- `POST /api/bookings` ghi `bookings.booking_email`; migration `002_add_booking_email.sql` tạo cột. Metadata local đọc gần nhất không có cột này. Cần schema phù hợp ở môi trường tích hợp.
+- Payment success ghi `notifications.content` sau commit; migration `001_create_notifications.sql` tạo bảng/cột này. Metadata local đọc gần nhất không có bảng notifications; khi chưa tạo, notification bị bỏ qua sau log nhưng payment vẫn paid và email vẫn được thử gửi.
+- `GET /api/notifications` trả key `message` bằng alias từ cột database `content`, khớp migration hiện tại. Route vẫn cần bảng notifications tồn tại để hoạt động.
+- Chưa gọi production, chưa xác minh Render environment/schema/SMTP, và chưa có integration test DB/email trong cập nhật tài liệu này. SMTP credentials không đưa vào Flutter.
 
-- Giữ UI, navigation, accessibility và state management hiện hữu.
-- Mỗi view xử lý loading, loaded, empty, retryable network error, timeout, validation và HTTP errors.
-- Phân biệt network/parse, 400, 401, 403, 404, 409, 500. Parse `success/message` null-safe; register conflict có thể kèm `errors` map.
-- Không retry mutation booking/payment/review/favorite nếu không có idempotency contract.
-- Dùng cache/invalidation hiện có để tránh gọi list/detail lặp; không làm hỏng feature hoạt động.
-- Không hiện booking/payment thành công nếu backend chưa xác nhận.
-
-## 7. Thứ tự tích hợp
-
-1. API client, Base URL, response/error mapping.
-2. Register/login/profile/logout và secure JWT storage.
-3. Hotel list/detail, images, amenities, vibes. Search/filter chỉ kết nối nếu có endpoint xác minh; hiện **NOT IMPLEMENTED**.
-4. Room types, rooms, availability.
-5. Booking create/history/detail/cancel, guests, QR data, check-in.
-6. Favorites.
-7. Vouchers, reviews, payment initiation và nhóm khác có endpoint.
-
-Trước mỗi màn hình, xác định mock hiện tại, endpoint/method/auth, request/query, response và errors. Chỉ thay mock khi contract đủ rõ. Endpoint chưa có hoặc chưa dùng được thì giữ mock được đánh dấu, không tự tạo URL.
-
-## 8. Kiểm thử và báo cáo
-
-- Chạy test phù hợp sau mỗi giai đoạn; cuối cùng chạy `flutter pub get` nếu cần, `flutter analyze` và test hiện hữu phù hợp (ví dụ `flutter test`).
-- Test parsing null, string ID, decimal/numeric, date, timestamp, empty list, lỗi HTTP và response envelope.
-- Không ghi dữ liệu production để xác minh. Dùng mocks/stubs/test environment hoặc GET read-only nếu phù hợp.
-- Báo cáo file đã sửa, flows/endpoints, mock còn lại và lý do, commands/tests thực sự chạy cùng kết quả, lỗi còn lại và contract mismatch.
-
-## 9. Ranh giới
-
-- Không sửa backend/database, không push/commit hoặc deploy.
-- Không xóa/refactor chức năng ngoài phạm vi; giữ thay đổi người dùng.
-- Không thêm endpoint, field, token flow, status transition hoặc business rule không được xác minh.
-- Không đưa credentials/token/password/PII vào source, logs, snapshots hoặc docs.
-- Đánh dấu hành vi chưa có bằng chứng `NOT VERIFIED`, `NOT IMPLEMENTED` hoặc `NEEDS RUNTIME TEST`.
+Các blockers trên dựa trên source và metadata local đã đọc; không khẳng định schema production giống local. Xem [API reference](HOTEL_BOOKING_API_DOCUMENT.md) để biết response và lỗi chi tiết. Không tự thêm endpoint hoặc field không có trong backend.

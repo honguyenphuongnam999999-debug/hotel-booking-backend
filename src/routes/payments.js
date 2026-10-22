@@ -37,6 +37,11 @@ router.post("/", async (req, res) => {
       await client.query("ROLLBACK");
       return res.status(409).json({ success: false, message: "Booking has already been paid" });
     }
+    const pending = await client.query("SELECT 1 FROM payments WHERE booking_id=$1 AND status='pending' LIMIT 1", [booking_id]);
+    if (pending.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ success: false, message: "Booking already has a pending payment" });
+    }
 
     const id = paymentId();
     const created = await client.query(
@@ -92,6 +97,8 @@ router.post("/:id/simulate", async (req, res) => {
   }
 
   const client = await pool.connect();
+  let transactionCommitted = false;
+  let clientReleased = false;
   try {
     await client.query("BEGIN");
     const { rows } = await client.query(
@@ -128,21 +135,11 @@ router.post("/:id/simulate", async (req, res) => {
     );
     if (result === "success") {
       await client.query("UPDATE bookings SET status='confirmed' WHERE id=$1 AND status='pending'", [payment.booking_id]);
-      await client.query(
-  `INSERT INTO notifications
-    (id, user_id, booking_id, title, content, type, created_at)
-   VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-  [
-    randomUUID(),
-    payment.user_id,
-    payment.booking_id,
-    "Thanh toán thành công",
-    `Booking ${payment.booking_code} đã được xác nhận thanh toán.`,
-    "payment"
-  ]
-);
     }
     await client.query("COMMIT");
+    transactionCommitted = true;
+    client.release();
+    clientReleased = true;
     let emailStatus = result === "success" ? "not_sent" : "not_applicable";
     let emailMessage = result === "success" ? "Payment is confirmed; booking email is not set" : "No email sent because payment was not successful";
     if (result === "success" && payment.booking_email) {
@@ -164,13 +161,38 @@ router.post("/:id/simulate", async (req, res) => {
         console.error("Payment confirmation email failed:", emailError.code || "SMTP_ERROR");
       }
     }
+    if (result === "success") {
+      try {
+        await pool.query(
+          `INSERT INTO notifications
+             (id, user_id, booking_id, title, content, type, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+          [
+            randomUUID(),
+            payment.user_id,
+            payment.booking_id,
+            "Thanh toán thành công",
+            `Booking ${payment.booking_code} đã được xác nhận thanh toán.`,
+            "payment",
+          ]
+        );
+      } catch (notificationError) {
+        console.error("Payment notification creation failed:", notificationError.code || "DB_ERROR");
+      }
+    }
     return res.json({ success: true, data: updated.rows[0], email: { status: emailStatus, message: emailMessage } });
   } catch (error) {
-    await client.query("ROLLBACK");
+    if (!transactionCommitted) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        console.error("Unable to roll back payment simulation:", rollbackError.code || "DB_ERROR");
+      }
+    }
     console.error("Unable to simulate payment:", error);
     return res.status(500).json({ success: false, message: "Unable to simulate payment" });
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
 });
 

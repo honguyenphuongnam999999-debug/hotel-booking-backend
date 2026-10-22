@@ -1,78 +1,70 @@
-# Prompt triển khai API cho AI Flutter
+﻿# Prompt: Integrate the existing Hotel Booking API into this Flutter project
 
-Sao chép prompt bên dưới vào AI Chat trong VS Code đang mở Flutter project. Đảm bảo hai tài liệu API được AI truy cập trong workspace hoặc cung cấp chúng vào workspace Flutter.
+Copy the prompt below into an AI coding assistant while the Flutter repository is open.
 
 ---
 
-Bạn là Senior Flutter Engineer đang làm việc trực tiếp trong Flutter project hiện tại. Phân tích code hiện có rồi triển khai kết nối Hotel Booking API theo các giai đoạn nhỏ, bảo toàn kiến trúc và chức năng đang hoạt động.
+## Role and scope
 
-## Tài liệu bắt buộc
+You are a senior Flutter engineer integrating the existing hotel-booking backend. Work only in the Flutter project. Do not modify backend source, database schema, SMTP/Render configuration, or backend documentation unless separately authorized. Do not deploy or call production mutation endpoints as tests.
 
-1. Đọc toàn bộ `HOTEL_BOOKING_API_DOCUMENT.md`.
-2. Đọc toàn bộ `FLUTTER_AI_INTEGRATION_GUIDE.md`.
-3. Nếu không tìm thấy tài liệu trong workspace Flutter, tìm workspace được cung cấp. Nếu vẫn không truy cập được, dừng trước khi code và báo tài liệu nào còn thiếu; không tự đoán contract.
-4. Tôn trọng nhãn xác minh. Source-verified không có nghĩa production đã chạy thành công.
+Production base URL supplied by the project: `https://hotel-booking-backend-fz9h.onrender.com`. Treat this as configuration, not proof of availability.
 
-## Giai đoạn A: Khảo sát trước khi sửa
+## Required discovery before editing
 
-- Đọc `pubspec.yaml`, cấu trúc `lib/`, tests, navigation/router, state management, DI, UI conventions, API abstractions, error handling và secure storage hiện tại.
-- Tìm mock data/fixtures, liệt kê màn hình/use case -> mock -> endpoint -> auth -> trạng thái xác minh.
-- Ghi baseline lỗi nếu có.
-- Báo cáo mapping và chia công việc thành giai đoạn nhỏ, nêu file dự kiến tái sử dụng/sửa và test phù hợp. Sau đó tiếp tục triển khai trong phạm vi prompt, không dừng để xin phép quyết định kỹ thuật thường lệ.
+1. Read `pubspec.yaml`, inspect `lib/`, navigation, state management, theme, models, repositories/services, and tests.
+2. Read `FLUTTER_AI_INTEGRATION_GUIDE.md` and `HOTEL_BOOKING_API_DOCUMENT.md`. If unavailable, inspect `src/app.js`, mounted routes, middleware and services; never infer an endpoint from a screen.
+3. Reuse the existing API client/auth/token storage and summarize the plan before broad changes.
 
-## Giai đoạn B: API foundation
+## Backend contract
 
-- Dùng Base URL `https://hotel-booking-backend-fz9h.onrender.com`.
-- Tái sử dụng Dio/client hiện có nếu phù hợp; không tạo client/repository trùng chức năng.
-- Tạo/cập nhật cấu hình, API client, services, repositories, models, interceptors theo kiến trúc hiện tại.
-- Xử lý envelope/error không đồng nhất, null safety, ID opaque string, decimal/numeric, ngày date-only và timestamp.
-- Redact token/password/Authorization/PII khỏi mọi logs.
-- Chạy test phù hợp sau giai đoạn này.
+Use only APIs currently present in source:
 
-## Giai đoạn C: Authentication và tài khoản
+- Health: `GET /`, `GET /api/test-db` public.
+- Auth: public `POST /api/auth/register` (`full_name,email,phone,password`) and `POST /api/auth/login` (`email,password`); JWT `POST /api/auth/logout`, `GET /api/auth/me`. JWT has `id`, expires in 7 days. Logout does not revoke it; delete local token.
+- Profile: JWT `GET /api/users/me`, `PUT /api/users/me` accepts only `full_name`, `phone`, `avatar`.
+- Catalog: public hotels (`GET /api/hotels`, `/{id}`, `/{id}/images`, `/{id}/amenities`, `/{id}/vibes`, `/{id}/room-types`), room types (`GET /api/room-types/{id}`, `/{id}/images`, `/{id}/rooms`), rooms (`GET /api/rooms`, `/{id}`, `/available`), vouchers (`GET /api/vouchers`, `/{code}`, `POST /validate`). Hotel reviews list is optional JWT; supplied invalid JWT still returns 401.
+- Booking: JWT `POST /api/bookings` requires `hotel_id,room_ids,check_in,check_out,adults,booking_email`; optional `children` defaults to 0 and `voucher_code`. `room_ids` are physical room IDs. Email is per booking, checked for format/domain DNS but DNS does not verify mailbox existence. Backend calculates totals; tax is currently zero. History/detail and cancel/check-in/booking QR routes are `/api/bookings`, `/{id}`, `/{id}/cancel` (PATCH), `/{id}/check-in` (POST), `/{id}/qr`; nested guest routes are `/{id}/guests` (GET/POST) and payments `/{id}/payments` (GET). Guest edit/delete: `/api/guests/{id}` (PUT/DELETE). All these require JWT and enforce ownership where source checks it.
+- Payment: JWT `POST /api/payments` takes `booking_id,payment_method` (`card` or `qr`); amount comes from DB. `GET /api/payments/{id}` and `/{id}/qr`; QR data is demo text, not proof of transfer. `POST /api/payments/{id}/simulate` takes `{"result":"success"|"failed"}` and requires server `PAYMENT_MODE=mock`.
+- `POST /api/payments` returns 409 if the booking is already paid or already has a pending payment. On mock success, backend commits payment `paid` and booking `confirmed` first; it then attempts notification and email independently. Notification failure does not roll back payment or prevent email. Email uses booking `booking_email`; response includes `email.status` (`sent`, `failed`, `not_sent`). SMTP failure does not roll back paid status. A completed payment cannot be simulated/sent again. This is not a real payment-provider integration.
+- Notifications: JWT `GET /api/notifications`.
+- Favorites: JWT `GET /api/favorites`, `POST /api/favorites/{hotel_id}`, and `DELETE /api/favorites/{hotel_id}`.
+- Reviews: JWT `POST /api/reviews` (`hotel_id,booking_id,rating,comment?`), `PUT/DELETE /api/reviews/{id}`; also hotel-scoped `POST /api/hotels/{id}/reviews`. Review requires the user's same-hotel booking in `completed` or `checked_in` state; rating 1–5. Reviews are hotel ratings, not free-form experience posts.
+- There are no posts, user search, public-other-user profile, image upload, refresh-token, hotel search/pagination, or FCM endpoints in mounted source.
 
-- Tích hợp register/login/profile/logout theo API document.
-- Register gửi `email`, `password` (>= 8 ký tự), `full_name`, `phone`; OpenAPI cũ không khớp source.
-- Login nhận JWT từ `token`; lưu secure storage; gửi `Authorization: Bearer <token>` cho endpoints yêu cầu auth.
-- Không lưu password. Không tạo refresh flow: backend không hỗ trợ. Logout chỉ xóa token phía client, không revoke JWT server-side.
-- Xử lý 401 theo session UX hiện tại, không retry login vô hạn; test validation và parse.
+## Known integration caveats
 
-## Giai đoạn D: Hotels và rooms
+- Previously inspected local schema lacked `users.id` default while register source omits an ID; login writes `last_login_at`, absent from that local metadata. Do not assume those auth writes work until verified in the target environment.
+- Booking source writes `bookings.booking_email`; migration `migrations/002_add_booking_email.sql` adds it. Previously inspected local metadata did not have the column.
+- Payment success inserts `notifications.content` after commit; if the table is absent, payment remains paid and email is still attempted, while notification creation is logged as failed. `GET /api/notifications` selects `content AS message` to preserve its response shape. Previously inspected local DB had no notifications table.
+- Schema observations were from configured local DB, not production. Production URL, SMTP credentials/configuration, and end-to-end payment/email have not been verified. The Flutter app must never receive SMTP credentials.
 
-- Kết nối hotel list/detail, images, amenities, vibes, room types/images, rooms và availability theo endpoints đã ghi.
-- `GET /api/hotels` không có hotel search/filter/pagination. Không nối UI search/filter vào query hoặc URL bịa.
-- Kiểm tra empty/error states và không kết luận availability nếu request không xác nhận.
+## Implementation requirements
 
-## Giai đoạn E: Booking
+- Follow existing Flutter architecture and keep visual design/navigation unless asked otherwise.
+- Keep base URL environment-configurable. Store JWT securely; never log passwords, tokens, identity details or card data.
+- Attach Bearer JWT only to protected APIs. Parse nullable values, string-or-number PostgreSQL numerics, opaque string IDs and `YYYY-MM-DD` dates safely.
+- Handle loading, empty, success and recoverable error states. Respect server `400/401/403/404/409/500` and booking DNS `503`; never claim success before a successful response.
+- Do not invent backend fields or endpoints, fake production data, card entry, payment scanning confirmation, booking expiry, cancellation policy, refresh-token or push behavior.
+- Do not modify booking/review behavior or introduce experience posts/image uploads as part of this integration.
+- Add focused tests following existing Flutter conventions; do not rewrite unrelated app areas.
 
-- Kết nối create/history/detail/cancel, guests, QR data và check-in nếu phù hợp màn hình hiện có.
-- Trước mỗi mutation, xác minh method/path/auth/body/validation/response/errors.
-- Booking create có room IDs, hotel ID, ngày, adults; children mặc định 0. Response khởi tạo `pending`, không tự hiển thị confirmed.
-- Không retry mutation khi timeout nếu không có idempotency contract.
-- Check-in theo source chỉ hợp lệ khi booking `confirmed` và check-in là ngày hiện tại.
+## Suggested flow
 
-## Giai đoạn F: Favorites và chức năng khác
+1. Explore hotel/catalog data and query physical room availability for dates.
+2. Create booking with the selected room IDs and a separately entered `booking_email`; use the server response as canonical.
+3. Create a demo payment without card data. For QR, encode/display returned demo text only. Simulate only in a demo environment when mock mode is intentionally enabled.
+4. Treat payment as paid only when the server response says `data.status="paid"`. Show email status from `email.status`; do not claim an email was delivered when status is `failed` or `not_sent`.
+5. Load booking history/detail and nested guests/payments as needed. For check-in, trust backend eligibility and response.
 
-- Tích hợp favorites, vouchers, reviews, payment initiation theo contract.
-- Payment POST tạo `pending`; không có provider/webhook/confirmation đã xác minh. HTTP 201 không đồng nghĩa đã thanh toán.
-- Reviews cần booking đủ điều kiện; xử lý 403/409 đúng response.
-- Chỉ thay mock bằng API thật khi endpoint contract đã xác minh. Với phần thiếu endpoint/chưa sử dụng được, giữ mock có đánh dấu và báo cáo.
+## Completion report
 
-## Quy tắc thay đổi
+List changed Flutter files, integrated methods/routes and auth behavior, checks/tests run, and unresolved dependencies. Do not claim production connectivity, real payment, or email delivery unless directly verified in an authorized non-mutating way.
 
-- Trước khi code từng chức năng, đối chiếu tài liệu về method, path, headers, query/body, response và errors.
-- Ưu tiên sửa/tái sử dụng file hiện có; chỉ thêm file khi architecture cần.
-- Giữ nguyên UI, navigation, state management và chức năng khác; không refactor ngoài phạm vi.
-- Không bịa endpoint/field/status/business rule/token behavior.
-- Không sửa backend/database, không push/commit GitHub, không deploy, không ghi dữ liệu production để test.
-- Kiểm tra file và thay đổi hiện tại trước khi sửa; không xóa/ghi đè thay đổi người dùng.
-- Nếu runtime response lệch tài liệu, dừng phần phụ thuộc; ghi status/schema đã quan sát sau khi loại PII/token, báo discrepancy và không đoán.
+---
 
-## Kiểm thử và báo cáo
+## Backend references
 
-- Chạy test phù hợp sau từng giai đoạn.
-- Cuối cùng chạy `flutter pub get` nếu cần, `flutter analyze`, và test hiện hữu phù hợp (ví dụ `flutter test`). Chỉ tuyên bố pass nếu command đã thực sự chạy thành công.
-- Sửa lỗi do thay đổi gây ra và phân biệt baseline với lỗi mới.
-- Báo cáo: file sửa; flows/endpoints tích hợp; mocks còn lại và lý do; trạng thái xác minh; commands/tests và kết quả; lỗi/contract mismatch chưa xử lý.
-
-Bắt đầu bằng Giai đoạn A: khảo sát Flutter project và lập mapping màn hình/mock/API trước khi sửa code.
+- `FLUTTER_AI_INTEGRATION_GUIDE.md`
+- `HOTEL_BOOKING_API_DOCUMENT.md`
+- `openapi.yaml` (verify against mounted source; it may not cover later changes)
