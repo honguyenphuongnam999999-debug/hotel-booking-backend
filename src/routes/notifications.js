@@ -1,19 +1,22 @@
 const express = require("express");
-const pool = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
+const { listNotificationsForUser } = require("../services/notificationService");
 
 const router = express.Router();
 router.use(requireAuth);
 
 router.get("/", async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      "SELECT id,user_id,booking_id,title,content AS message,type,created_at,is_read FROM notifications WHERE user_id=$1 ORDER BY created_at DESC",
-      [req.user.id]
-    );
+    const rows = await listNotificationsForUser(req.user.id);
     return res.json({ success: true, data: rows });
   } catch (error) {
-    console.error("Unable to get notifications:", error);
+    console.error("Unable to get notifications:", {
+      operation: error.operation || "list_user_notifications",
+      table: error.table || "notifications",
+      column: error.column || null,
+      code: error.code || "DB_ERROR",
+      message: error.message,
+    });
     return res.status(500).json({ success: false, message: "Unable to get notifications" });
   }
 });

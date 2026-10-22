@@ -3,6 +3,7 @@ const { randomUUID } = require("crypto");
 const pool = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 const { sendPaymentSuccessEmail } = require("../services/paymentEmailService");
+const { createPaymentSuccessNotification } = require("../services/notificationService");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -37,7 +38,11 @@ async function getEmailDeliveryStatus(paymentId, paymentStatus) {
   } catch (error) {
     console.error("Unable to read payment email delivery status:", {
       paymentId,
+      operation: "read_payment_email_delivery_status",
+      table: "payment_email_deliveries",
+      column: error.column || null,
       code: error.code || "DB_ERROR",
+      message: error.message,
     });
     return { status: "not_tracked", message: "Email delivery status is unavailable", code: error.code || "DB_ERROR" };
   }
@@ -110,7 +115,11 @@ async function deliverPaymentEmail(payment) {
     console.error("Payment email delivery state update failed:", {
       paymentId: payment.id,
       bookingCode: payment.booking_code,
+      operation: "mark_payment_email_sent",
+      table: "payment_email_deliveries",
+      column: stateError.column || null,
       code: stateError.code || "DB_ERROR",
+      message: stateError.message,
     });
   }
   return { status: "sent", message: "SMTP accepted the confirmation email recipient" };
@@ -308,7 +317,11 @@ router.post("/:id/simulate", async (req, res) => {
         console.error("Payment confirmed but email tracking could not be initialized:", {
           paymentId: payment.id,
           bookingCode: payment.booking_code,
+          operation: "initialize_payment_email_delivery",
+          table: "payment_email_deliveries",
+          column: trackingError.column || null,
           code,
+          message: trackingError.message,
         });
         email = {
           status: "not_tracked",
@@ -319,21 +332,20 @@ router.post("/:id/simulate", async (req, res) => {
     }
     if (result === "success") {
       try {
-        await pool.query(
-          `INSERT INTO notifications
-             (id, user_id, booking_id, title, content, type, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-          [
-            randomUUID(),
-            payment.user_id,
-            payment.booking_id,
-            "Thanh toán thành công",
-            `Booking ${payment.booking_code} đã được xác nhận thanh toán.`,
-            "payment",
-          ]
-        );
+        await createPaymentSuccessNotification({
+          id: randomUUID(),
+          userId: payment.user_id,
+          bookingId: payment.booking_id,
+          bookingCode: payment.booking_code,
+        });
       } catch (notificationError) {
-        console.error("Payment notification creation failed:", notificationError.code || "DB_ERROR");
+        console.error("Payment notification creation failed:", {
+          operation: notificationError.operation || "create_payment_success_notification",
+          table: notificationError.table || "notifications",
+          column: notificationError.column || null,
+          code: notificationError.code || "DB_ERROR",
+          message: notificationError.message,
+        });
       }
     }
     return res.json({
