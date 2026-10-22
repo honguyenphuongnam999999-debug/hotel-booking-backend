@@ -10,6 +10,94 @@ router.use(requireAuth);
 const paymentId = () => `PAY${randomUUID().replace(/-/g, "").slice(0, 17)}`;
 const transactionId = () => `TXN${randomUUID().replace(/-/g, "").slice(0, 20)}`;
 const paymentFields = "p.id,p.booking_id,p.payment_method,p.transaction_id,p.amount,p.status,p.paid_at";
+const isValidEmail = (value) => typeof value === "string" && value.length <= 255 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+async function deliverPaymentEmail(payment) {
+  const { rows: claimed } = await pool.query(
+    `UPDATE payment_email_deliveries
+     SET status='sending',attempt_count=attempt_count+1,last_error_code=NULL,updated_at=NOW()
+     WHERE payment_id=$1 AND status IN ('pending','failed')
+     RETURNING payment_id`,
+    [payment.id]
+  );
+  if (!claimed.length) {
+    const { rows } = await pool.query(
+      "SELECT status,last_error_code FROM payment_email_deliveries WHERE payment_id=$1",
+      [payment.id]
+    );
+    const delivery = rows[0];
+    if (!delivery) return { status: "not_tracked", message: "No email delivery record exists for this payment" };
+    if (delivery.status === "failed") {
+      return { status: "failed", message: "Confirmation email failed; retry is available", code: delivery.last_error_code };
+    }
+    return { status: delivery.status, message: delivery.status === "sent"
+      ? "Confirmation email was already accepted by SMTP"
+      : "Confirmation email is already being processed" };
+  }
+
+  const recipient = isValidEmail(payment.booking_email)
+    ? payment.booking_email.trim()
+    : isValidEmail(payment.user_email) ? payment.user_email.trim() : null;
+  if (!recipient) {
+    const code = "BOOKING_EMAIL_MISSING";
+    await pool.query(
+      "UPDATE payment_email_deliveries SET status='failed',last_error_code=$2,updated_at=NOW() WHERE payment_id=$1 AND status='sending'",
+      [payment.id, code]
+    );
+    console.error("Payment confirmation email failed:", { paymentId: payment.id, bookingCode: payment.booking_code, code });
+    return { status: "failed", message: "No valid booking or account email is available; retry is available", code };
+  }
+
+  try {
+    await sendPaymentSuccessEmail({
+      to: recipient,
+      bookingCode: payment.booking_code,
+      paymentId: payment.id,
+      amount: payment.amount,
+      hotelName: payment.hotel_name,
+      roomTypes: payment.room_types,
+      checkIn: payment.check_in,
+      checkOut: payment.check_out,
+      paymentStatus: payment.status,
+    });
+  } catch (emailError) {
+    const code = emailError.code || "SMTP_ERROR";
+    await pool.query(
+      "UPDATE payment_email_deliveries SET status='failed',last_error_code=$2,updated_at=NOW() WHERE payment_id=$1 AND status='sending'",
+      [payment.id, code]
+    );
+    console.error("Payment confirmation email failed:", { paymentId: payment.id, bookingCode: payment.booking_code, code });
+    return { status: "failed", message: "Payment is confirmed, but confirmation email failed; retry is available", code };
+  }
+
+  try {
+    await pool.query(
+      "UPDATE payment_email_deliveries SET status='sent',sent_at=NOW(),updated_at=NOW() WHERE payment_id=$1 AND status='sending'",
+      [payment.id]
+    );
+  } catch (stateError) {
+    console.error("Payment email delivery state update failed:", {
+      paymentId: payment.id,
+      bookingCode: payment.booking_code,
+      code: stateError.code || "DB_ERROR",
+    });
+  }
+  return { status: "sent", message: "SMTP accepted the confirmation email recipient" };
+}
+
+async function safelyDeliverPaymentEmail(payment) {
+  try {
+    return await deliverPaymentEmail(payment);
+  } catch (error) {
+    const code = error.code || "EMAIL_DELIVERY_STATE_ERROR";
+    console.error("Payment email delivery processing failed:", {
+      paymentId: payment.id,
+      bookingCode: payment.booking_code,
+      code,
+    });
+    return { status: "failed", message: "Payment is confirmed, but email delivery could not be completed", code };
+  }
+}
 
 router.post("/", async (req, res) => {
   const { booking_id, payment_method } = req.body;
@@ -97,14 +185,21 @@ router.post("/:id/simulate", async (req, res) => {
   }
 
   const client = await pool.connect();
-  let transactionCommitted = false;
+  let transactionFinalized = false;
   let clientReleased = false;
   try {
     await client.query("BEGIN");
     const { rows } = await client.query(
       `SELECT p.id,p.booking_id,p.payment_method,p.transaction_id,p.amount,p.status,p.paid_at,
-              b.status AS booking_status,b.booking_code,b.user_id,b.booking_email,b.check_in,b.check_out,h.name AS hotel_name
+              b.status AS booking_status,b.booking_code,b.user_id,b.booking_email,u.email AS user_email,
+              b.check_in,b.check_out,h.name AS hotel_name,room_summary.room_types
        FROM payments p JOIN bookings b ON b.id=p.booking_id JOIN hotels h ON h.id=b.hotel_id
+       LEFT JOIN users u ON u.id=b.user_id
+       LEFT JOIN LATERAL (
+         SELECT string_agg(DISTINCT rt.name, ', ' ORDER BY rt.name) AS room_types
+         FROM booking_rooms br JOIN rooms r ON r.id=br.room_id JOIN room_types rt ON rt.id=r.room_type_id
+         WHERE br.booking_id=b.id
+       ) room_summary ON TRUE
        WHERE p.id=$1 AND b.user_id=$2 FOR UPDATE OF b,p`,
       [req.params.id, req.user.id]
     );
@@ -115,6 +210,25 @@ router.post("/:id/simulate", async (req, res) => {
     const payment = rows[0];
     if (payment.status !== "pending") {
       await client.query("ROLLBACK");
+      if (payment.status === "paid" && result === "success") {
+        transactionFinalized = true;
+        client.release();
+        clientReleased = true;
+        const email = await safelyDeliverPaymentEmail(payment);
+        return res.json({
+          success: true,
+          data: {
+            id: payment.id,
+            booking_id: payment.booking_id,
+            payment_method: payment.payment_method,
+            transaction_id: payment.transaction_id,
+            amount: payment.amount,
+            status: payment.status,
+            paid_at: payment.paid_at,
+          },
+          email,
+        });
+      }
       return res.status(409).json({ success: false, message: "Payment has already been completed" });
     }
     if (["cancelled", "completed", "no_show", "checked_in"].includes(payment.booking_status)) {
@@ -135,32 +249,19 @@ router.post("/:id/simulate", async (req, res) => {
     );
     if (result === "success") {
       await client.query("UPDATE bookings SET status='confirmed' WHERE id=$1 AND status='pending'", [payment.booking_id]);
+      await client.query(
+        `INSERT INTO payment_email_deliveries(payment_id,status,attempt_count,created_at,updated_at)
+         VALUES($1,'pending',0,NOW(),NOW()) ON CONFLICT(payment_id) DO NOTHING`,
+        [payment.id]
+      );
     }
     await client.query("COMMIT");
-    transactionCommitted = true;
+    transactionFinalized = true;
     client.release();
     clientReleased = true;
-    let emailStatus = result === "success" ? "not_sent" : "not_applicable";
-    let emailMessage = result === "success" ? "Payment is confirmed; booking email is not set" : "No email sent because payment was not successful";
-    if (result === "success" && payment.booking_email) {
-      try {
-        await sendPaymentSuccessEmail({
-          to: payment.booking_email,
-          bookingCode: payment.booking_code,
-          paymentId: payment.id,
-          amount: payment.amount,
-          hotelName: payment.hotel_name,
-          checkIn: payment.check_in,
-          checkOut: payment.check_out,
-        });
-        emailStatus = "sent";
-        emailMessage = "Confirmation email sent";
-      } catch (emailError) {
-        emailStatus = "failed";
-        emailMessage = "Payment is confirmed, but confirmation email could not be sent";
-        console.error("Payment confirmation email failed:", emailError.code || "SMTP_ERROR");
-      }
-    }
+    const email = result === "success"
+      ? await safelyDeliverPaymentEmail({ ...payment, status: newStatus })
+      : { status: "not_applicable", message: "No email sent because payment was not successful" };
     if (result === "success") {
       try {
         await pool.query(
@@ -180,9 +281,9 @@ router.post("/:id/simulate", async (req, res) => {
         console.error("Payment notification creation failed:", notificationError.code || "DB_ERROR");
       }
     }
-    return res.json({ success: true, data: updated.rows[0], email: { status: emailStatus, message: emailMessage } });
+    return res.json({ success: true, data: updated.rows[0], email });
   } catch (error) {
-    if (!transactionCommitted) {
+    if (!transactionFinalized) {
       try {
         await client.query("ROLLBACK");
       } catch (rollbackError) {
