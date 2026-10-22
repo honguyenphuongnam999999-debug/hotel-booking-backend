@@ -125,10 +125,15 @@ router.post("/", async (req, res) => {
       await client.query("ROLLBACK");
       return res.status(409).json({ success: false, message: "Booking has already been paid" });
     }
-    const pending = await client.query("SELECT 1 FROM payments WHERE booking_id=$1 AND status='pending' LIMIT 1", [booking_id]);
+    const pending = await client.query(
+      `SELECT id,booking_id,payment_method,transaction_id,amount,status,paid_at
+       FROM payments WHERE booking_id=$1 AND status='pending'
+       ORDER BY id DESC LIMIT 1 FOR UPDATE`,
+      [booking_id]
+    );
     if (pending.rows.length) {
-      await client.query("ROLLBACK");
-      return res.status(409).json({ success: false, message: "Booking already has a pending payment" });
+      await client.query("COMMIT");
+      return res.status(200).json({ success: true, data: pending.rows[0], reused: true });
     }
 
     const id = paymentId();
@@ -191,7 +196,8 @@ router.post("/:id/simulate", async (req, res) => {
     await client.query("BEGIN");
     const { rows } = await client.query(
       `SELECT p.id,p.booking_id,p.payment_method,p.transaction_id,p.amount,p.status,p.paid_at,
-              b.status AS booking_status,b.booking_code,b.user_id,b.booking_email,u.email AS user_email,
+              b.status AS booking_status,b.booking_code,b.user_id,to_jsonb(b)->>'booking_email' AS booking_email,
+              u.email AS user_email,
               b.check_in,b.check_out,h.name AS hotel_name,room_summary.room_types
        FROM payments p JOIN bookings b ON b.id=p.booking_id JOIN hotels h ON h.id=b.hotel_id
        LEFT JOIN users u ON u.id=b.user_id
@@ -249,19 +255,34 @@ router.post("/:id/simulate", async (req, res) => {
     );
     if (result === "success") {
       await client.query("UPDATE bookings SET status='confirmed' WHERE id=$1 AND status='pending'", [payment.booking_id]);
-      await client.query(
-        `INSERT INTO payment_email_deliveries(payment_id,status,attempt_count,created_at,updated_at)
-         VALUES($1,'pending',0,NOW(),NOW()) ON CONFLICT(payment_id) DO NOTHING`,
-        [payment.id]
-      );
     }
     await client.query("COMMIT");
     transactionFinalized = true;
     client.release();
     clientReleased = true;
-    const email = result === "success"
-      ? await safelyDeliverPaymentEmail({ ...payment, status: newStatus })
-      : { status: "not_applicable", message: "No email sent because payment was not successful" };
+    let email = { status: "not_applicable", message: "No email sent because payment was not successful" };
+    if (result === "success") {
+      try {
+        await pool.query(
+          `INSERT INTO payment_email_deliveries(payment_id,status,attempt_count,created_at,updated_at)
+           VALUES($1,'pending',0,NOW(),NOW()) ON CONFLICT(payment_id) DO NOTHING`,
+          [payment.id]
+        );
+        email = await safelyDeliverPaymentEmail({ ...payment, status: newStatus });
+      } catch (trackingError) {
+        const code = trackingError.code || "EMAIL_TRACKING_ERROR";
+        console.error("Payment confirmed but email tracking could not be initialized:", {
+          paymentId: payment.id,
+          bookingCode: payment.booking_code,
+          code,
+        });
+        email = {
+          status: "not_tracked",
+          message: "Payment is confirmed, but email tracking is unavailable; apply the email delivery migration",
+          code,
+        };
+      }
+    }
     if (result === "success") {
       try {
         await pool.query(
