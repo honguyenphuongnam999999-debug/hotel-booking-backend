@@ -52,8 +52,8 @@ async function createPaymentSuccessNotification({ id, userId, bookingId, booking
     id,
     user_id: userId,
     booking_id: bookingId,
-    title: "Thanh toán thành công",
-    [textColumn]: `Booking ${bookingCode} đã được xác nhận thanh toán.`,
+    title: "Thanh to\u00e1n th\u00e0nh c\u00f4ng",
+    [textColumn]: `\u0110\u1eb7t ph\u00f2ng ${bookingCode} \u0111\u00e3 \u0111\u01b0\u1ee3c x\u00e1c nh\u1eadn thanh to\u00e1n.`,
     type: "payment",
     created_at: new Date(),
   };

@@ -42,7 +42,6 @@ async function getEmailDeliveryStatus(paymentId, paymentStatus) {
       table: "payment_email_deliveries",
       column: error.column || null,
       code: error.code || "DB_ERROR",
-      message: error.message,
     });
     return { status: "not_tracked", message: "Email delivery status is unavailable", code: error.code || "DB_ERROR" };
   }
@@ -71,9 +70,7 @@ async function deliverPaymentEmail(payment) {
       : "Confirmation email is already being processed" };
   }
 
-  const recipient = isValidEmail(payment.booking_email)
-    ? payment.booking_email.trim()
-    : isValidEmail(payment.user_email) ? payment.user_email.trim() : null;
+  const recipient = isValidEmail(payment.booking_email) ? payment.booking_email.trim() : null;
   if (!recipient) {
     const code = "BOOKING_EMAIL_MISSING";
     await pool.query(
@@ -119,7 +116,6 @@ async function deliverPaymentEmail(payment) {
       table: "payment_email_deliveries",
       column: stateError.column || null,
       code: stateError.code || "DB_ERROR",
-      message: stateError.message,
     });
   }
   return { status: "sent", message: "SMTP accepted the confirmation email recipient" };
@@ -185,7 +181,7 @@ router.post("/", async (req, res) => {
     return res.status(201).json({ success: true, data: created.rows[0] });
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Unable to create payment:", error);
+    console.error("Unable to create payment:", { code: error.code || "DB_ERROR" });
     return res.status(500).json({ success: false, message: "Unable to create payment" });
   } finally {
     client.release();
@@ -215,7 +211,7 @@ router.get("/:id/qr", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Unable to get payment QR:", error);
+    console.error("Unable to get payment QR:", { code: error.code || "DB_ERROR" });
     return res.status(500).json({ success: false, message: "Unable to get payment QR" });
   }
 });
@@ -237,10 +233,8 @@ router.post("/:id/simulate", async (req, res) => {
     const { rows } = await client.query(
       `SELECT p.id,p.booking_id,p.payment_method,p.transaction_id,p.amount,p.status,p.paid_at,
               b.status AS booking_status,b.booking_code,b.user_id,to_jsonb(b)->>'booking_email' AS booking_email,
-              u.email AS user_email,
               b.check_in,b.check_out,h.name AS hotel_name,room_summary.room_types
        FROM payments p JOIN bookings b ON b.id=p.booking_id JOIN hotels h ON h.id=b.hotel_id
-       LEFT JOIN users u ON u.id=b.user_id
        LEFT JOIN LATERAL (
          SELECT string_agg(DISTINCT rt.name, ', ' ORDER BY rt.name) AS room_types
          FROM booking_rooms br JOIN rooms r ON r.id=br.room_id JOIN room_types rt ON rt.id=r.room_type_id
@@ -321,7 +315,6 @@ router.post("/:id/simulate", async (req, res) => {
           table: "payment_email_deliveries",
           column: trackingError.column || null,
           code,
-          message: trackingError.message,
         });
         email = {
           status: "not_tracked",
@@ -362,7 +355,7 @@ router.post("/:id/simulate", async (req, res) => {
         console.error("Unable to roll back payment simulation:", rollbackError.code || "DB_ERROR");
       }
     }
-    console.error("Unable to simulate payment:", error);
+    console.error("Unable to simulate payment:", { code: error.code || "DB_ERROR" });
     return res.status(500).json({ success: false, message: "Unable to simulate payment" });
   } finally {
     if (!clientReleased) client.release();
@@ -385,7 +378,7 @@ router.get("/:id", async (req, res) => {
       email_status: email.status,
     });
   } catch (error) {
-    console.error("Unable to get payment:", error);
+    console.error("Unable to get payment:", { code: error.code || "DB_ERROR" });
     return res.status(500).json({ success: false, message: "Unable to get payment" });
   }
 });
