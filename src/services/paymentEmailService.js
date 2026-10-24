@@ -152,7 +152,7 @@ async function sendPaymentSuccessEmail(
       body: JSON.stringify({
         sender: config.sender,
         to: [{ email: recipient, ...(customerName ? { name: String(customerName).slice(0, 100) } : {}) }],
-        subject: `[TEST/SANDBOX] Thanh toán - ${bookingCode || "đặt phòng"}`,
+        subject: `Xác nhận thanh toán - ${bookingCode || "đặt phòng"}`,
         htmlContent,
         textContent,
         headers: { IdempotencyKey: paymentIdempotencyKey(paymentId) },
