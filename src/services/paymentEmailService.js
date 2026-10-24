@@ -1,4 +1,4 @@
-const nodemailer = require("nodemailer");
+﻿const nodemailer = require("nodemailer");
 
 function positiveInteger(value, fallback) {
   const parsed = Number(value);
@@ -40,7 +40,7 @@ function createTransporter() {
   });
 }
 
-async function sendPaymentSuccessEmail({ to, bookingCode, paymentId, amount, hotelName, roomTypes, checkIn, checkOut, paymentStatus }) {
+async function sendPaymentSuccessEmail({ to, customerName, bookingCode, paymentId, amount, hotelName, roomTypes, checkIn, checkOut, paymentStatus }) {
   if (process.env.EMAIL_ENABLED?.trim().toLowerCase() === "false") {
     const error = new Error("Email sending is disabled");
     error.code = "EMAIL_DISABLED";
@@ -60,49 +60,62 @@ async function sendPaymentSuccessEmail({ to, bookingCode, paymentId, amount, hot
     error.code = "SMTP_CONFIG_MISSING";
     throw error;
   }
+  if (paymentStatus !== "paid") {
+    const error = new Error("Payment must be successful before sending confirmation email");
+    error.code = "PAYMENT_NOT_PAID";
+    throw error;
+  }
 
   const booking = escapeHtml(bookingCode || "Chưa có thông tin");
   const payment = escapeHtml(paymentId || "Chưa có thông tin");
+  const name = escapeHtml(customerName || "Quý khách");
   const hotel = escapeHtml(hotelName || "Chưa có thông tin");
-  const rooms = escapeHtml(roomTypes || "Không có thông tin loại phòng");
+  const rooms = escapeHtml(roomTypes || "Chưa có thông tin loại phòng");
   const arrival = escapeHtml(formatDate(checkIn));
   const departure = escapeHtml(formatDate(checkOut));
-  const money = new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(Number(amount));
-  const paymentState = paymentStatus === "paid" ? "Đã thanh toán" : escapeHtml(paymentStatus || "Chưa có thông tin");
+  const numericAmount = Number(amount);
+  const money = Number.isFinite(numericAmount)
+    ? new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(numericAmount)
+    : "Chưa có thông tin";
+  const paymentState = "Đã thanh toán (mô phỏng)";
   const html = `<!doctype html>
 <html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:Arial,Helvetica,sans-serif;color:#203047;background:#f2f5f8;padding:24px">
-  <main style="max-width:600px;margin:auto;background:#fff;padding:28px;border-radius:12px">
-    <h1 style="color:#17324d">Xác nhận đặt phòng</h1>
-    <p>Thanh toán đã được xác nhận thành công. Thông tin đặt phòng của bạn:</p>
-    <p><strong>Mã đặt phòng:</strong> ${booking}</p>
-    <p><strong>Khách sạn:</strong> ${hotel}</p>
-    <p><strong>Loại phòng:</strong> ${rooms}</p>
-    <p><strong>Ngày nhận phòng:</strong> ${arrival}</p>
-    <p><strong>Ngày trả phòng:</strong> ${departure}</p>
-    <p><strong>Trạng thái thanh toán:</strong> ${paymentState}</p>
-    <p><strong>Tổng thanh toán:</strong> ${escapeHtml(money)}</p>
-    <p style="color:#718096">Mã thanh toán: ${payment}</p>
-    <p>Cảm ơn bạn đã chọn FomoGO.</p>
+<body style="margin:0;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;color:#203047;background:#f2f5f8">
+  <main style="max-width:600px;margin:auto;background:#fff;padding:24px;border-radius:12px">
+    <p style="margin:0 0 18px;padding:10px 12px;border-radius:6px;background:#fff4d6;color:#805b00;font-size:14px"><strong>[TEST/SANDBOX]</strong> Đây là giao dịch kiểm thử, không phải xác nhận thanh toán thật.</p>
+    <h1 style="margin:0 0 16px;color:#17324d;font-size:24px">Thông báo thanh toán</h1>
+    <p>Xin chào ${name},</p>
+    <p>Thông tin đặt phòng trong môi trường kiểm thử:</p>
+    <div style="line-height:1.65">
+      <p><strong>Mã đặt phòng:</strong> ${booking}</p>
+      <p><strong>Khách sạn:</strong> ${hotel}</p>
+      <p><strong>Loại phòng:</strong> ${rooms}</p>
+      <p><strong>Ngày nhận phòng:</strong> ${arrival}</p>
+      <p><strong>Ngày trả phòng:</strong> ${departure}</p>
+      <p><strong>Số tiền:</strong> ${escapeHtml(money)}</p>
+      <p><strong>Trạng thái:</strong> ${escapeHtml(paymentState)}</p>
+    </div>
+    <p style="color:#718096;font-size:13px">Mã thanh toán: ${payment}</p>
   </main>
 </body></html>`;
   const text = [
-    "FomoGO — XÁC NHẬN ĐẶT PHÒNG",
-    "Thanh toán đã được xác nhận thành công.",
+    "[TEST/SANDBOX] Thông báo thanh toán",
+    "Đây là giao dịch kiểm thử, không phải xác nhận thanh toán thật.",
+    `Khách hàng: ${customerName || "Quý khách"}`,
     `Mã đặt phòng: ${bookingCode || "Chưa có thông tin"}`,
     `Khách sạn: ${hotelName || "Chưa có thông tin"}`,
-    `Loại phòng: ${roomTypes || "Không có thông tin loại phòng"}`,
+    `Loại phòng: ${roomTypes || "Chưa có thông tin loại phòng"}`,
     `Ngày nhận phòng: ${formatDate(checkIn)}`,
     `Ngày trả phòng: ${formatDate(checkOut)}`,
-    `Trạng thái thanh toán: ${paymentState}`,
-    `Tổng thanh toán: ${money}`,
+    `Số tiền: ${money}`,
+    `Trạng thái: ${paymentState}`,
     `Mã thanh toán: ${paymentId || "Chưa có thông tin"}`,
   ].join("\n\n");
 
   const info = await createTransporter().sendMail({
     from: process.env.SMTP_FROM || `"FomoGO" <${smtpUser}>`,
     to: recipient,
-    subject: `Xác nhận đặt phòng thành công - ${bookingCode}`,
+    subject: `[TEST/SANDBOX] Thanh toán - ${bookingCode || "đặt phòng"}`,
     text,
     html,
     textEncoding: "quoted-printable",

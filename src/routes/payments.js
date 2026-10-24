@@ -84,6 +84,7 @@ async function deliverPaymentEmail(payment) {
   try {
     await sendPaymentSuccessEmail({
       to: recipient,
+      customerName: payment.customer_name,
       bookingCode: payment.booking_code,
       paymentId: payment.id,
       amount: payment.amount,
@@ -232,9 +233,11 @@ router.post("/:id/simulate", async (req, res) => {
     await client.query("BEGIN");
     const { rows } = await client.query(
       `SELECT p.id,p.booking_id,p.payment_method,p.transaction_id,p.amount,p.status,p.paid_at,
-              b.status AS booking_status,b.booking_code,b.user_id,to_jsonb(b)->>'booking_email' AS booking_email,
+              b.status AS booking_status,b.booking_code,b.user_id,u.full_name AS customer_name,
+              to_jsonb(b)->>'booking_email' AS booking_email,
               b.check_in,b.check_out,h.name AS hotel_name,room_summary.room_types
-       FROM payments p JOIN bookings b ON b.id=p.booking_id JOIN hotels h ON h.id=b.hotel_id
+       FROM payments p JOIN bookings b ON b.id=p.booking_id JOIN users u ON u.id=b.user_id
+       JOIN hotels h ON h.id=b.hotel_id
        LEFT JOIN LATERAL (
          SELECT string_agg(DISTINCT rt.name, ', ' ORDER BY rt.name) AS room_types
          FROM booking_rooms br JOIN rooms r ON r.id=br.room_id JOIN room_types rt ON rt.id=r.room_type_id
