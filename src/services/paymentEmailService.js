@@ -102,23 +102,31 @@ async function sendPaymentSuccessEmail(
   const paymentState = "Đã thanh toán (mô phỏng)";
   const htmlContent = `<!doctype html>
 <html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;color:#203047;background:#f2f5f8">
-  <main style="max-width:600px;margin:auto;background:#fff;padding:24px;border-radius:12px">
-    <p style="margin:0 0 18px;padding:10px 12px;border-radius:6px;background:#fff4d6;color:#805b00;font-size:14px"><strong>[TEST/SANDBOX]</strong> Đây là giao dịch kiểm thử, không phải xác nhận thanh toán thật.</p>
-    <h1 style="margin:0 0 16px;color:#17324d;font-size:24px">Thông báo thanh toán</h1>
-    <p>Xin chào ${name},</p>
-    <p>Thông tin đặt phòng trong môi trường kiểm thử:</p>
-    <div style="line-height:1.65">
-      <p><strong>Mã đặt phòng:</strong> ${booking}</p>
-      <p><strong>Khách sạn:</strong> ${hotel}</p>
-      <p><strong>Loại phòng:</strong> ${rooms}</p>
-      <p><strong>Ngày nhận phòng:</strong> ${arrival}</p>
-      <p><strong>Ngày trả phòng:</strong> ${departure}</p>
-      <p><strong>Số tiền:</strong> ${escapeHtml(money)}</p>
-      <p><strong>Trạng thái:</strong> ${escapeHtml(paymentState)}</p>
-    </div>
-    <p style="color:#718096;font-size:13px">Mã thanh toán: ${payment}</p>
-  </main>
+<body style="margin:0;padding:24px 12px;background:#f2f5f8;font-family:Arial,Helvetica,sans-serif;color:#243247">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden">
+    <tr><td style="padding:24px 28px;background:#17324d;color:#ffffff">
+      <p style="margin:0;font-size:13px;letter-spacing:1.4px;font-weight:bold;color:#c7d8ee">FOMOGO · HOTEL BOOKING</p>
+      <h1 style="margin:12px 0 0;font-size:24px;line-height:1.3">Thanh toán đã được xác nhận</h1>
+    </td></tr>
+    <tr><td style="padding:24px 28px 8px">
+      <p style="margin:0 0 16px;padding:12px 14px;border:1px solid #f2d58a;border-radius:8px;background:#fff8e6;color:#775600;font-size:13px;line-height:1.5"><strong>[TEST/SANDBOX]</strong> Đây là giao dịch kiểm thử, không phải xác nhận thanh toán thật.</p>
+      <p style="margin:8px 0;font-size:15px">Xin chào ${name},</p>
+      <p style="margin:8px 0 18px;color:#526176;font-size:14px;line-height:1.6">Thông tin đặt phòng của bạn:</p>
+    </td></tr>
+    <tr><td style="padding:0 28px 24px">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e4eaf1;border-radius:10px;border-spacing:0;overflow:hidden">
+        <tr><td style="width:42%;padding:13px 14px;border-bottom:1px solid #e9eef4;background:#f7f9fc;color:#607086;font-size:13px">Mã đặt phòng</td><td style="padding:13px 14px;border-bottom:1px solid #e9eef4;color:#17324d;font-size:14px;font-weight:bold;overflow-wrap:anywhere">${booking}</td></tr>
+        <tr><td style="padding:13px 14px;border-bottom:1px solid #e9eef4;background:#f7f9fc;color:#607086;font-size:13px">Khách sạn</td><td style="padding:13px 14px;border-bottom:1px solid #e9eef4;color:#243247;font-size:14px;overflow-wrap:anywhere">${hotel}</td></tr>
+        <tr><td style="padding:13px 14px;border-bottom:1px solid #e9eef4;background:#f7f9fc;color:#607086;font-size:13px">Loại phòng</td><td style="padding:13px 14px;border-bottom:1px solid #e9eef4;color:#243247;font-size:14px;overflow-wrap:anywhere">${rooms}</td></tr>
+        <tr><td style="padding:13px 14px;border-bottom:1px solid #e9eef4;background:#f7f9fc;color:#607086;font-size:13px">Ngày nhận</td><td style="padding:13px 14px;border-bottom:1px solid #e9eef4;color:#243247;font-size:14px">${arrival}</td></tr>
+        <tr><td style="padding:13px 14px;border-bottom:1px solid #e9eef4;background:#f7f9fc;color:#607086;font-size:13px">Ngày trả</td><td style="padding:13px 14px;border-bottom:1px solid #e9eef4;color:#243247;font-size:14px">${departure}</td></tr>
+        <tr><td style="padding:13px 14px;border-bottom:1px solid #e9eef4;background:#f7f9fc;color:#607086;font-size:13px">Số tiền</td><td style="padding:13px 14px;border-bottom:1px solid #e9eef4;color:#17324d;font-size:16px;font-weight:bold">${escapeHtml(money)}</td></tr>
+        <tr><td style="padding:13px 14px;border-bottom:1px solid #e9eef4;background:#f7f9fc;color:#607086;font-size:13px">Trạng thái</td><td style="padding:13px 14px;border-bottom:1px solid #e9eef4"><span style="display:inline-block;padding:6px 10px;border-radius:20px;background:#e7f6ee;color:#187044;font-size:12px;font-weight:bold">${escapeHtml(paymentState)}</span></td></tr>
+        <tr><td style="padding:13px 14px;background:#f7f9fc;color:#607086;font-size:13px">Mã thanh toán</td><td style="padding:13px 14px;color:#243247;font-size:13px;overflow-wrap:anywhere">${payment}</td></tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:16px 28px 22px;border-top:1px solid #edf1f5;color:#8491a2;font-size:12px;line-height:1.5">Email tự động từ FomoGO. Giao dịch trong môi trường kiểm thử.</td></tr>
+  </table>
 </body></html>`;
   const textContent = [
     "[TEST/SANDBOX] Thông báo thanh toán",
@@ -127,8 +135,8 @@ async function sendPaymentSuccessEmail(
     `Mã đặt phòng: ${bookingCode || "Chưa có thông tin"}`,
     `Khách sạn: ${hotelName || "Chưa có thông tin"}`,
     `Loại phòng: ${roomTypes || "Chưa có thông tin loại phòng"}`,
-    `Ngày nhận phòng: ${formatDate(checkIn)}`,
-    `Ngày trả phòng: ${formatDate(checkOut)}`,
+    `Ngày nhận: ${formatDate(checkIn)}`,
+    `Ngày trả: ${formatDate(checkOut)}`,
     `Số tiền: ${money}`,
     `Trạng thái: ${paymentState}`,
     `Mã thanh toán: ${paymentId || "Chưa có thông tin"}`,
