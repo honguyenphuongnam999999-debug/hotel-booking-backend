@@ -99,7 +99,7 @@ async function sendPaymentSuccessEmail(
   const money = Number.isFinite(numericAmount)
     ? new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(numericAmount)
     : "Chưa có thông tin";
-  const paymentState = "Đã thanh toán (mô phỏng)";
+  const paymentState = "Đã thanh toán";
   const htmlContent = `<!doctype html>
 <html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:24px 12px;background:#f2f5f8;font-family:Arial,Helvetica,sans-serif;color:#243247">
@@ -109,7 +109,6 @@ async function sendPaymentSuccessEmail(
       <h1 style="margin:12px 0 0;font-size:24px;line-height:1.3">Thanh toán đã được xác nhận</h1>
     </td></tr>
     <tr><td style="padding:24px 28px 8px">
-      <p style="margin:0 0 16px;padding:12px 14px;border:1px solid #f2d58a;border-radius:8px;background:#fff8e6;color:#775600;font-size:13px;line-height:1.5"><strong>[TEST/SANDBOX]</strong> Đây là giao dịch kiểm thử, không phải xác nhận thanh toán thật.</p>
       <p style="margin:8px 0;font-size:15px">Xin chào ${name},</p>
       <p style="margin:8px 0 18px;color:#526176;font-size:14px;line-height:1.6">Thông tin đặt phòng của bạn:</p>
     </td></tr>
@@ -125,12 +124,11 @@ async function sendPaymentSuccessEmail(
         <tr><td style="padding:13px 14px;background:#f7f9fc;color:#607086;font-size:13px">Mã thanh toán</td><td style="padding:13px 14px;color:#243247;font-size:13px;overflow-wrap:anywhere">${payment}</td></tr>
       </table>
     </td></tr>
-    <tr><td style="padding:16px 28px 22px;border-top:1px solid #edf1f5;color:#8491a2;font-size:12px;line-height:1.5">Email tự động từ FomoGO. Giao dịch trong môi trường kiểm thử.</td></tr>
+    <tr><td style="padding:16px 28px 22px;border-top:1px solid #edf1f5;color:#8491a2;font-size:12px;line-height:1.5">Email tự động từ FomoGO.</td></tr>
   </table>
 </body></html>`;
   const textContent = [
-    "[TEST/SANDBOX] Thông báo thanh toán",
-    "Đây là giao dịch kiểm thử, không phải xác nhận thanh toán thật.",
+    "Thông báo thanh toán",
     `Khách hàng: ${customerName || "Quý khách"}`,
     `Mã đặt phòng: ${bookingCode || "Chưa có thông tin"}`,
     `Khách sạn: ${hotelName || "Chưa có thông tin"}`,
