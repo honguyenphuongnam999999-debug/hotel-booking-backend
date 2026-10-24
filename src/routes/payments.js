@@ -28,11 +28,12 @@ async function getEmailDeliveryStatus(paymentId, paymentStatus) {
     const delivery = rows[0];
     return {
       status: delivery.status,
+      delivery_status: delivery.status === "sent" ? "unconfirmed" : delivery.status === "failed" ? "not_accepted" : delivery.status,
       ...(delivery.last_error_code ? { code: delivery.last_error_code } : {}),
       message: delivery.status === "sent"
-        ? "SMTP accepted the confirmation email recipient"
+        ? "Brevo accepted the email request; delivery is not confirmed"
         : delivery.status === "failed"
-          ? "Confirmation email failed; retry is available"
+          ? "Brevo email request failed; retry is available"
           : "Confirmation email delivery is being processed",
     };
   } catch (error) {
@@ -63,10 +64,10 @@ async function deliverPaymentEmail(payment) {
     const delivery = rows[0];
     if (!delivery) return { status: "not_tracked", message: "No email delivery record exists for this payment" };
     if (delivery.status === "failed") {
-      return { status: "failed", message: "Confirmation email failed; retry is available", code: delivery.last_error_code };
+      return { status: "failed", delivery_status: "not_accepted", message: "Brevo email request failed; retry is available", code: delivery.last_error_code };
     }
-    return { status: delivery.status, message: delivery.status === "sent"
-      ? "Confirmation email was already accepted by SMTP"
+    return { status: delivery.status, delivery_status: delivery.status === "sent" ? "unconfirmed" : delivery.status, message: delivery.status === "sent"
+      ? "Brevo already accepted this email request; delivery is not confirmed"
       : "Confirmation email is already being processed" };
   }
 
@@ -78,11 +79,11 @@ async function deliverPaymentEmail(payment) {
       [payment.id, code]
     );
     console.error("Payment confirmation email failed:", { paymentId: payment.id, bookingCode: payment.booking_code, code });
-    return { status: "failed", message: "No valid booking or account email is available; retry is available", code };
+    return { status: "failed", delivery_status: "not_accepted", message: "No valid booking email is available; retry is available", code };
   }
 
   try {
-    await sendPaymentSuccessEmail({
+    const acceptedEmail = await sendPaymentSuccessEmail({
       to: recipient,
       customerName: payment.customer_name,
       bookingCode: payment.booking_code,
@@ -94,14 +95,19 @@ async function deliverPaymentEmail(payment) {
       checkOut: payment.check_out,
       paymentStatus: payment.status,
     });
+    console.info("Brevo accepted payment confirmation email:", {
+      paymentId: payment.id,
+      bookingCode: payment.booking_code,
+      messageId: acceptedEmail.messageId,
+    });
   } catch (emailError) {
-    const code = emailError.code || "SMTP_ERROR";
+    const code = emailError.code || "BREVO_ERROR";
     await pool.query(
       "UPDATE payment_email_deliveries SET status='failed',last_error_code=$2,updated_at=NOW() WHERE payment_id=$1 AND status='sending'",
       [payment.id, code]
     );
     console.error("Payment confirmation email failed:", { paymentId: payment.id, bookingCode: payment.booking_code, code });
-    return { status: "failed", message: "Payment is confirmed, but confirmation email failed; retry is available", code };
+    return { status: "failed", delivery_status: "not_accepted", message: "Payment is confirmed, but Brevo email request failed; retry is available", code };
   }
 
   try {
@@ -119,7 +125,7 @@ async function deliverPaymentEmail(payment) {
       code: stateError.code || "DB_ERROR",
     });
   }
-  return { status: "sent", message: "SMTP accepted the confirmation email recipient" };
+  return { status: "sent", delivery_status: "unconfirmed", message: "Brevo accepted the email request; delivery is not confirmed" };
 }
 
 async function safelyDeliverPaymentEmail(payment) {
@@ -132,7 +138,7 @@ async function safelyDeliverPaymentEmail(payment) {
       bookingCode: payment.booking_code,
       code,
     });
-    return { status: "failed", message: "Payment is confirmed, but email delivery could not be completed", code };
+    return { status: "failed", delivery_status: "not_accepted", message: "Payment is confirmed, but email delivery could not be completed", code };
   }
 }
 
@@ -254,6 +260,9 @@ router.post("/:id/simulate", async (req, res) => {
     if (payment.status !== "pending") {
       await client.query("ROLLBACK");
       if (payment.status === "paid" && result === "success") {
+        if (!["confirmed", "checked_in", "completed"].includes(payment.booking_status)) {
+          return res.status(409).json({ success: false, message: "Booking is not in a confirmed state for email retry" });
+        }
         transactionFinalized = true;
         client.release();
         clientReleased = true;

@@ -34,8 +34,8 @@ router.post("/:id/reviews", requireAuth, async (req, res) => {
   const { booking_id, rating, comment } = req.body;
   if (!booking_id || !Number.isInteger(Number(rating)) || Number(rating) < 1 || Number(rating) > 5) return res.status(400).json({ success: false, message: "booking_id and rating from 1 to 5 are required" });
   try {
-    const booking = await pool.query("SELECT id FROM bookings WHERE id=$1 AND hotel_id=$2 AND user_id=$3 AND status IN ('completed','checked_in')", [booking_id, req.params.id, req.user.id]);
-    if (!booking.rows.length) return res.status(403).json({ success: false, message: "A completed booking owned by this user is required" });
+    const booking = await pool.query("SELECT id FROM bookings WHERE id=$1 AND hotel_id=$2 AND user_id=$3 AND (status IN ('completed','checked_in') OR (status='confirmed' AND check_out<=CURRENT_DATE))", [booking_id, req.params.id, req.user.id]);
+    if (!booking.rows.length) return res.status(403).json({ success: false, message: "A checked-in or completed booking that has passed its checkout date and belongs to this user is required" });
     const reviewId = "REV" + require("crypto").randomUUID().replace(/-/g, "").slice(0, 17);
     const { rows } = await pool.query("INSERT INTO reviews(id,user_id,hotel_id,booking_id,rating,comment) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,user_id,hotel_id,booking_id,rating,comment,created_at", [reviewId, req.user.id, req.params.id, booking_id, Number(rating), comment || null]);
     res.status(201).json({ success: true, data: rows[0] });

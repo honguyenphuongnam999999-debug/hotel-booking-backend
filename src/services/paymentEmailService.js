@@ -1,4 +1,15 @@
-﻿const nodemailer = require("nodemailer");
+﻿const { createHash } = require("crypto");
+
+const BREVO_EMAIL_URL = "https://api.brevo.com/v3/smtp/email";
+const DEFAULT_TIMEOUT_MS = 10000;
+const validEmail = (value) => typeof value === "string" && value.length <= 255 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+function createError(code, message, status) {
+  const error = new Error(message);
+  error.code = code;
+  if (status) error.status = status;
+  return error;
+}
 
 function positiveInteger(value, fallback) {
   const parsed = Number(value);
@@ -20,50 +31,61 @@ function formatDate(value) {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : "Chưa có thông tin";
 }
 
-function createTransporter() {
-  const port = positiveInteger(process.env.SMTP_PORT, 587);
-  const secureSetting = process.env.SMTP_SECURE?.trim().toLowerCase();
-  const secure = secureSetting === undefined || secureSetting === ""
-    ? port === 465
-    : ["true", "1", "yes"].includes(secureSetting);
-
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port,
-    secure,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_APP_PASSWORD || process.env.SMTP_PASSWORD,
-    },
-    connectionTimeout: positiveInteger(process.env.SMTP_CONNECTION_TIMEOUT_MS, 10000),
-    socketTimeout: positiveInteger(process.env.SMTP_SOCKET_TIMEOUT_MS, 20000),
-  });
+// Stable UUID-shaped key lets Brevo recognize retries of this payment as the same request.
+function paymentIdempotencyKey(paymentId) {
+  const hex = createHash("sha256").update(`payment-confirmation:${paymentId}`).digest("hex");
+  const variant = ((Number.parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
-async function sendPaymentSuccessEmail({ to, customerName, bookingCode, paymentId, amount, hotelName, roomTypes, checkIn, checkOut, paymentStatus }) {
-  if (process.env.EMAIL_ENABLED?.trim().toLowerCase() === "false") {
-    const error = new Error("Email sending is disabled");
-    error.code = "EMAIL_DISABLED";
-    throw error;
+function getConfig(env) {
+  const provider = (env.EMAIL_PROVIDER || "brevo").trim().toLowerCase();
+  if (provider !== "brevo") {
+    throw createError("EMAIL_PROVIDER_UNSUPPORTED", "Configured email provider is not supported");
   }
+  if (env.EMAIL_ENABLED?.trim().toLowerCase() === "false") {
+    throw createError("EMAIL_DISABLED", "Email sending is disabled");
+  }
+  const apiKey = env.BREVO_API_KEY?.trim();
+  const senderEmail = env.BREVO_SENDER_EMAIL?.trim();
+  const senderName = env.BREVO_SENDER_NAME?.trim();
+  if (!apiKey || !senderEmail || !senderName) {
+    throw createError("BREVO_CONFIG_MISSING", "Brevo email configuration is incomplete");
+  }
+  if (!validEmail(senderEmail) || senderName.length > 100) {
+    throw createError("BREVO_SENDER_INVALID", "Brevo sender configuration is invalid");
+  }
+  return {
+    apiKey,
+    sender: { email: senderEmail, name: senderName },
+    timeoutMs: positiveInteger(env.BREVO_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
+  };
+}
 
-  const recipient = typeof to === "string" ? to.trim() : "";
-  if (!recipient || recipient.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
-    const error = new Error("A valid booking email is required");
-    error.code = "BOOKING_EMAIL_INVALID";
-    throw error;
+async function readResponseJson(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw createError("BREVO_INVALID_RESPONSE", "Brevo returned an invalid response");
   }
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPassword = process.env.SMTP_APP_PASSWORD || process.env.SMTP_PASSWORD;
-  if (!smtpUser || !smtpPassword) {
-    const error = new Error("SMTP configuration is missing");
-    error.code = "SMTP_CONFIG_MISSING";
-    throw error;
+}
+
+async function sendPaymentSuccessEmail(
+  { to, customerName, bookingCode, paymentId, amount, hotelName, roomTypes, checkIn, checkOut, paymentStatus },
+  { fetchImpl = globalThis.fetch, env = process.env } = {}
+) {
+  const config = getConfig(env);
+  const recipient = typeof to === "string" ? to.trim() : "";
+  if (!validEmail(recipient)) {
+    throw createError("BOOKING_EMAIL_INVALID", "A valid booking email is required");
   }
   if (paymentStatus !== "paid") {
-    const error = new Error("Payment must be successful before sending confirmation email");
-    error.code = "PAYMENT_NOT_PAID";
-    throw error;
+    throw createError("PAYMENT_NOT_PAID", "Payment must be successful before sending confirmation email");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw createError("FETCH_UNAVAILABLE", "This Node.js runtime does not provide fetch");
   }
 
   const booking = escapeHtml(bookingCode || "Chưa có thông tin");
@@ -78,7 +100,7 @@ async function sendPaymentSuccessEmail({ to, customerName, bookingCode, paymentI
     ? new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(numericAmount)
     : "Chưa có thông tin";
   const paymentState = "Đã thanh toán (mô phỏng)";
-  const html = `<!doctype html>
+  const htmlContent = `<!doctype html>
 <html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;color:#203047;background:#f2f5f8">
   <main style="max-width:600px;margin:auto;background:#fff;padding:24px;border-radius:12px">
@@ -98,7 +120,7 @@ async function sendPaymentSuccessEmail({ to, customerName, bookingCode, paymentI
     <p style="color:#718096;font-size:13px">Mã thanh toán: ${payment}</p>
   </main>
 </body></html>`;
-  const text = [
+  const textContent = [
     "[TEST/SANDBOX] Thông báo thanh toán",
     "Đây là giao dịch kiểm thử, không phải xác nhận thanh toán thật.",
     `Khách hàng: ${customerName || "Quý khách"}`,
@@ -112,25 +134,49 @@ async function sendPaymentSuccessEmail({ to, customerName, bookingCode, paymentI
     `Mã thanh toán: ${paymentId || "Chưa có thông tin"}`,
   ].join("\n\n");
 
-  const info = await createTransporter().sendMail({
-    from: process.env.SMTP_FROM || `"FomoGO" <${smtpUser}>`,
-    to: recipient,
-    subject: `[TEST/SANDBOX] Thanh toán - ${bookingCode || "đặt phòng"}`,
-    text,
-    html,
-    textEncoding: "quoted-printable",
-  });
-  const accepted = Array.isArray(info.accepted) ? info.accepted : [];
-  const wasAccepted = accepted.some((address) => {
-    const acceptedAddress = typeof address === "string" ? address : address?.address;
-    return typeof acceptedAddress === "string" && acceptedAddress.trim().toLowerCase() === recipient.toLowerCase();
-  });
-  if (!wasAccepted) {
-    const error = new Error("SMTP did not accept the booking email recipient");
-    error.code = "SMTP_RECIPIENT_REJECTED";
+  let response;
+  try {
+    response = await fetchImpl(BREVO_EMAIL_URL, {
+      method: "POST",
+      headers: {
+        "api-key": config.apiKey,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        sender: config.sender,
+        to: [{ email: recipient, ...(customerName ? { name: String(customerName).slice(0, 100) } : {}) }],
+        subject: `[TEST/SANDBOX] Thanh toán - ${bookingCode || "đặt phòng"}`,
+        htmlContent,
+        textContent,
+        headers: { IdempotencyKey: paymentIdempotencyKey(paymentId) },
+        tags: ["payment-confirmation"],
+      }),
+      signal: AbortSignal.timeout(config.timeoutMs),
+    });
+  } catch (error) {
+    if (error?.name === "TimeoutError" || error?.name === "AbortError") {
+      throw createError("BREVO_TIMEOUT", "Brevo request timed out");
+    }
+    throw createError("BREVO_NETWORK_ERROR", "Unable to connect to Brevo");
+  }
+
+  let responseBody;
+  try {
+    responseBody = await readResponseJson(response);
+  } catch (error) {
+    if (!response.ok) {
+      throw createError(`BREVO_API_${response.status}`, "Brevo rejected the email request", response.status);
+    }
     throw error;
   }
-  return { messageId: info.messageId, accepted: info.accepted, rejected: info.rejected };
+  if (!response.ok) {
+    throw createError(`BREVO_API_${response.status}`, "Brevo rejected the email request", response.status);
+  }
+  if (typeof responseBody.messageId !== "string" || !responseBody.messageId.trim()) {
+    throw createError("BREVO_INVALID_RESPONSE", "Brevo did not return an email message ID");
+  }
+  return { messageId: responseBody.messageId, accepted: true, delivered: false };
 }
 
-module.exports = { sendPaymentSuccessEmail };
+module.exports = { sendPaymentSuccessEmail, paymentIdempotencyKey };
