@@ -97,6 +97,12 @@ router.get("/users/:userId", optionalAuth, async (req, res) => {
   const paging = pagination(req.query);
   if (!paging) return res.status(400).json({ success: false, message: "page must be positive and limit must be from 1 to 50" });
   try {
+    const profile = await pool.query(
+      "SELECT id,full_name,avatar,is_private FROM users WHERE id=$1 AND account_status='active'",
+      [req.params.userId]
+    );
+    if (!profile.rows.length) return res.status(404).json({ success: false, message: "User not found" });
+
     const count = await pool.query(
       `SELECT COUNT(*)::int AS total FROM posts p JOIN users u ON u.id=p.user_id
        WHERE p.user_id=$1 AND p.status='published' AND u.account_status='active' AND (u.is_private=FALSE OR u.id=$2)`, [req.params.userId, req.user?.id || null]
@@ -105,11 +111,7 @@ router.get("/users/:userId", optionalAuth, async (req, res) => {
       `${POST_SELECT} WHERE p.user_id=$1 AND p.status='published' AND u.account_status='active' AND (u.is_private=FALSE OR u.id=$4)
        ORDER BY p.created_at DESC,p.id DESC LIMIT $2 OFFSET $3`, [req.params.userId, paging.limit, paging.offset, req.user?.id || null]
     );
-    if (!count.rows[0].total) {
-      const user = await pool.query("SELECT 1 FROM users WHERE id=$1 AND account_status='active'", [req.params.userId]);
-      if (!user.rows.length) return res.status(404).json({ success: false, message: "User not found" });
-    }
-    return res.json({ success: true, data: result.rows, pagination: pageResponse(paging.page, paging.limit, count.rows[0].total) });
+    return res.json({ success: true, profile: profile.rows[0], data: result.rows, pagination: pageResponse(paging.page, paging.limit, count.rows[0].total) });
   } catch (error) {
     if (error.code === "22P02") return res.status(400).json({ success: false, message: "userId must be a UUID" });
     logDatabaseError("User post list failed", error);
