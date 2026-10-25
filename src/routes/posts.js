@@ -1,6 +1,6 @@
 const express = require("express");
 const pool = require("../config/db");
-const { requireAuth } = require("../middleware/auth");
+const { requireAuth, optionalAuth } = require("../middleware/auth");
 
 const router = express.Router();
 const POST_FIELDS = ["title", "location", "rating", "content"];
@@ -55,7 +55,7 @@ function logDatabaseError(label, error) {
 }
 
 // Search published posts. Escape LIKE wildcards so q is treated as literal text.
-router.get("/search", async (req, res) => {
+router.get("/search", optionalAuth, async (req, res) => {
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
   const paging = pagination(req.query);
   if (!q || q.length > 100) return res.status(400).json({ success: false, message: "q is required and must be at most 100 characters" });
@@ -65,13 +65,13 @@ router.get("/search", async (req, res) => {
   try {
     const count = await pool.query(
       `SELECT COUNT(*)::int AS total FROM posts p JOIN users u ON u.id=p.user_id
-       WHERE p.status='published' AND u.account_status='active'
-         AND (p.title ILIKE $1 ESCAPE '\\' OR p.location ILIKE $1 ESCAPE '\\' OR p.content ILIKE $1 ESCAPE '\\')`, [pattern]
+       WHERE p.status='published' AND u.account_status='active' AND (u.is_private=FALSE OR u.id=$2)
+         AND (p.title ILIKE $1 ESCAPE '\\' OR p.location ILIKE $1 ESCAPE '\\' OR p.content ILIKE $1 ESCAPE '\\')`, [pattern, req.user?.id || null]
     );
     const result = await pool.query(
-      `${POST_SELECT} WHERE p.status='published' AND u.account_status='active'
+      `${POST_SELECT} WHERE p.status='published' AND u.account_status='active' AND (u.is_private=FALSE OR u.id=$4)
        AND (p.title ILIKE $1 ESCAPE '\\' OR p.location ILIKE $1 ESCAPE '\\' OR p.content ILIKE $1 ESCAPE '\\')
-       ORDER BY p.created_at DESC, p.id DESC LIMIT $2 OFFSET $3`, [pattern, paging.limit, paging.offset]
+       ORDER BY p.created_at DESC, p.id DESC LIMIT $2 OFFSET $3`, [pattern, paging.limit, paging.offset, req.user?.id || null]
     );
     return res.json({ success: true, data: result.rows, pagination: pageResponse(paging.page, paging.limit, count.rows[0].total) });
   } catch (error) {
@@ -93,17 +93,17 @@ router.get("/mine", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/users/:userId", async (req, res) => {
+router.get("/users/:userId", optionalAuth, async (req, res) => {
   const paging = pagination(req.query);
   if (!paging) return res.status(400).json({ success: false, message: "page must be positive and limit must be from 1 to 50" });
   try {
     const count = await pool.query(
       `SELECT COUNT(*)::int AS total FROM posts p JOIN users u ON u.id=p.user_id
-       WHERE p.user_id=$1 AND p.status='published' AND u.account_status='active'`, [req.params.userId]
+       WHERE p.user_id=$1 AND p.status='published' AND u.account_status='active' AND (u.is_private=FALSE OR u.id=$2)`, [req.params.userId, req.user?.id || null]
     );
     const result = await pool.query(
-      `${POST_SELECT} WHERE p.user_id=$1 AND p.status='published' AND u.account_status='active'
-       ORDER BY p.created_at DESC,p.id DESC LIMIT $2 OFFSET $3`, [req.params.userId, paging.limit, paging.offset]
+      `${POST_SELECT} WHERE p.user_id=$1 AND p.status='published' AND u.account_status='active' AND (u.is_private=FALSE OR u.id=$4)
+       ORDER BY p.created_at DESC,p.id DESC LIMIT $2 OFFSET $3`, [req.params.userId, paging.limit, paging.offset, req.user?.id || null]
     );
     if (!count.rows[0].total) {
       const user = await pool.query("SELECT 1 FROM users WHERE id=$1 AND account_status='active'", [req.params.userId]);
@@ -117,11 +117,11 @@ router.get("/users/:userId", async (req, res) => {
   }
 });
 
-router.get("/:id/comments", async (req, res) => {
+router.get("/:id/comments", optionalAuth, async (req, res) => {
   const paging = pagination(req.query);
   if (!paging) return res.status(400).json({ success: false, message: "page must be positive and limit must be from 1 to 50" });
   try {
-    const post = await pool.query("SELECT id FROM posts WHERE id=$1 AND status='published'", [req.params.id]);
+    const post = await pool.query("SELECT p.id FROM posts p JOIN users u ON u.id=p.user_id WHERE p.id=$1 AND p.status='published' AND u.account_status='active' AND (u.is_private=FALSE OR u.id=$2)", [req.params.id, req.user?.id || null]);
     if (!post.rows.length) return res.status(404).json({ success: false, message: "Post not found" });
     const count = await pool.query("SELECT COUNT(*)::int AS total FROM post_comments WHERE post_id=$1", [req.params.id]);
     const result = await pool.query(
@@ -144,7 +144,7 @@ router.post("/:id/comments", requireAuth, async (req, res) => {
     return res.status(400).json({ success: false, message: "content must be a non-empty string of at most 2000 characters" });
   }
   try {
-    const post = await pool.query("SELECT id FROM posts WHERE id=$1 AND status='published'", [req.params.id]);
+    const post = await pool.query("SELECT p.id FROM posts p JOIN users u ON u.id=p.user_id WHERE p.id=$1 AND p.status='published' AND u.account_status='active' AND (u.is_private=FALSE OR u.id=$2)", [req.params.id, req.user.id]);
     if (!post.rows.length) return res.status(404).json({ success: false, message: "Post not found" });
     const result = await pool.query(
       `INSERT INTO post_comments(post_id,user_id,content) VALUES($1,$2,$3)
@@ -171,9 +171,9 @@ router.delete("/:id/comments/:commentId", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", optionalAuth, async (req, res) => {
   try {
-    const result = await pool.query(`${POST_SELECT} WHERE p.id=$1 AND p.status='published' AND u.account_status='active'`, [req.params.id]);
+    const result = await pool.query(`${POST_SELECT} WHERE p.id=$1 AND p.status='published' AND u.account_status='active' AND (u.is_private=FALSE OR u.id=$2)`, [req.params.id, req.user?.id || null]);
     if (!result.rows.length) return res.status(404).json({ success: false, message: "Post not found" });
     return res.json({ success: true, data: result.rows[0] });
   } catch (error) {
@@ -183,12 +183,12 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.get("/", async (req, res) => {
+router.get("/", optionalAuth, async (req, res) => {
   const paging = pagination(req.query);
   if (!paging) return res.status(400).json({ success: false, message: "page must be positive and limit must be from 1 to 50" });
   try {
-    const count = await pool.query("SELECT COUNT(*)::int AS total FROM posts p JOIN users u ON u.id=p.user_id WHERE p.status='published' AND u.account_status='active'");
-    const result = await pool.query(`${POST_SELECT} WHERE p.status='published' AND u.account_status='active' ORDER BY p.created_at DESC,p.id DESC LIMIT $1 OFFSET $2`, [paging.limit, paging.offset]);
+    const count = await pool.query("SELECT COUNT(*)::int AS total FROM posts p JOIN users u ON u.id=p.user_id WHERE p.status='published' AND u.account_status='active' AND (u.is_private=FALSE OR u.id=$1)", [req.user?.id || null]);
+    const result = await pool.query(`${POST_SELECT} WHERE p.status='published' AND u.account_status='active' AND (u.is_private=FALSE OR u.id=$1) ORDER BY p.created_at DESC,p.id DESC LIMIT $2 OFFSET $3`, [req.user?.id || null, paging.limit, paging.offset]);
     return res.json({ success: true, data: result.rows, pagination: pageResponse(paging.page, paging.limit, count.rows[0].total) });
   } catch (error) {
     logDatabaseError("Post feed failed", error);
